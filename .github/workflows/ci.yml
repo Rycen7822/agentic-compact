@@ -1,0 +1,49 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        codex_version: ["0.146.0", "0.145.0"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: npm install --global @openai/codex@${{ matrix.codex_version }}
+      - run: codex --version
+      - run: codex app-server generate-json-schema --out target/codex-schema
+      - run: python3 scripts/verify-schema-bundle.py tests/fixtures/app-server/codex-cli-${{ matrix.codex_version }} target/codex-schema
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.0
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo check --all-targets --all-features
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+      - run: cargo test --all-targets --all-features
+      - run: cargo test --test real_codex killed_real_app_server_fails_closed_without_a_retry -- --ignored
+
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          paths = list(Path('.').rglob('*.json'))
+          for path in paths:
+              json.loads(path.read_text())
+          print(f"validated {len(paths)} JSON files")
+          PY

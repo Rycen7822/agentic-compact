@@ -1,0 +1,40 @@
+[package]
+name = "agentic-compact"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Model-triggered native Codex context compaction with same-thread checkpoint handoff"
+license = "MIT"
+repository = "https://github.com/Rycen7822/agentic-compact"
+readme = "README.md"
+
+[dependencies]
+base64 = "0.22"
+clap = { version = "4.5", features = ["derive"] }
+dashmap = "6.1"
+fs2 = "0.4"
+futures-util = "0.3"
+regex = "1.11"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = "0.28"
+tokio-util = "0.7"
+toml_edit = "0.23"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
+unicode-normalization = "0.1"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[dev-dependencies]
+proptest = "1"
+tempfile = "3"
+tokio = { version = "1", features = ["test-util"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "codexVersion": "codex-cli 0.145.0",
+  "selector": "agentic-compact@agentic-compact",
+  "marketplaceName": "agentic-compact",
+  "commands": {
+    "marketplaceAdd": ["plugin", "marketplace", "add", "{source}", "--json"],
+    "marketplaceList": ["plugin", "marketplace", "list", "--json"],
+    "pluginAdd": ["plugin", "add", "agentic-compact@agentic-compact", "--json"],
+    "pluginList": ["plugin", "list", "--json"],
+    "pluginRemove": ["plugin", "remove", "agentic-compact@agentic-compact", "--json"],
+    "marketplaceRemove": ["plugin", "marketplace", "remove", "agentic-compact", "--json"]
+  },
+  "jsonContracts": {
+    "marketplaceAdd": ["marketplaceName", "installedRoot", "alreadyAdded"],
+    "marketplaceList": ["marketplaces"],
+    "pluginAdd": [
+      "pluginId",
+      "name",
+      "marketplaceName",
+      "version",
+      "installedPath",
+      "authPolicy"
+    ],
+    "pluginList": ["installed", "available"],
+    "pluginRemove": ["pluginId", "name", "marketplaceName"],
+    "marketplaceRemove": ["marketplaceName", "installedRoot"]
+  },
+  "verifiedInIsolatedCodexHome": true
+}

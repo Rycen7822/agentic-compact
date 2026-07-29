@@ -1,0 +1,58 @@
+name: codex-main-canary
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 4 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  schema-surface:
+    continue-on-error: true
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: agentic-compact
+      - uses: actions/checkout@v4
+        with:
+          repository: openai/codex
+          ref: main
+          path: upstream-codex
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: upstream-codex/codex-rs
+      - working-directory: upstream-codex/codex-rs
+        run: cargo build --release --bin codex
+      - run: upstream-codex/codex-rs/target/release/codex app-server generate-json-schema --out generated-schema
+      - run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          text = "\n".join(
+              path.read_text(errors="replace")
+              for path in Path("generated-schema").rglob("*.json")
+          )
+          required = [
+              "initialize",
+              "thread/resume",
+              "thread/read",
+              "thread/loaded/list",
+              "thread/compact/start",
+              "thread/inject_items",
+              "turn/start",
+              "thread/unsubscribe",
+              "turn/started",
+              "turn/completed",
+              "item/started",
+              "item/completed",
+          ]
+          missing = [method for method in required if f'"{method}"' not in text]
+          if missing:
+              raise SystemExit(f"missing required stable methods: {missing}")
+          print(f"Codex main retains all {len(required)} required stable methods")
+          PY
+      - working-directory: agentic-compact
+        run: cargo test --test schema_contract

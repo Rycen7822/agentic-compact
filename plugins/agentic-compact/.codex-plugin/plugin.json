@@ -1,0 +1,24 @@
+{
+  "name": "agentic-compact",
+  "version": "0.1.0",
+  "description": "Let Codex request native same-thread context compaction and resume from a bounded checkpoint.",
+  "author": {
+    "name": "Rycen7822",
+    "url": "https://github.com/Rycen7822"
+  },
+  "repository": "https://github.com/Rycen7822/agentic-compact",
+  "license": "MIT",
+  "keywords": ["codex", "context", "compaction", "agent"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Agentic Compact",
+    "shortDescription": "Model-triggered same-thread compaction.",
+    "longDescription": "Adds a narrowly scoped skill for invoking the separately installed Agentic Compact MCP server at stable semantic boundaries.",
+    "developerName": "Rycen7822",
+    "category": "Developer Tools",
+    "capabilities": ["Context management"],
+    "defaultPrompt": [
+      "Use Agentic Compact when this long task reaches a stable stage boundary."
+    ]
+  }
+}

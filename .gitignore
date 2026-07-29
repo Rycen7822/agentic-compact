@@ -1,0 +1,11 @@
+/target/
+*.swp
+*.tmp
+.DS_Store
+agentic-compact-*.zip
+/worknotes/
+/CODEX_STATE.md
+/note.md
+/handoff.md
+/docs/DEVELOPMENT_PLAN.md
+/docs/evidence/

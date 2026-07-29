@@ -1,0 +1,10 @@
+{
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "output_text",
+      "text": "<agentic_compact_checkpoint id=\"cp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" sha256=\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\">\n{\"version\":1,\"checkpointId\":\"cp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"sha256\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"}\n</agentic_compact_checkpoint>"
+    }
+  ]
+}

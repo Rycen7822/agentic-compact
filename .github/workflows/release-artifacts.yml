@@ -1,0 +1,110 @@
+name: release-artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        codex_version: ["0.146.0", "0.145.0"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: npm install --global @openai/codex@${{ matrix.codex_version }}
+      - run: codex --version
+      - run: codex app-server generate-json-schema --out target/codex-schema
+      - run: python3 scripts/verify-schema-bundle.py tests/fixtures/app-server/codex-cli-${{ matrix.codex_version }} target/codex-schema
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.0
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo check --all-targets --all-features
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+      - run: cargo test --all-targets --all-features
+      - run: cargo test --test real_codex killed_real_app_server_fails_closed_without_a_retry -- --ignored
+      - if: matrix.codex_version == '0.146.0'
+        run: cargo test --test phase6_soak -- --ignored
+      - if: matrix.codex_version == '0.146.0'
+        run: cargo test --test phase6_resources -- --ignored
+
+  build:
+    needs: quality
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            install_musl: true
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            install_musl: true
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            install_musl: false
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+            install_musl: false
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.0
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - if: matrix.install_musl
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes musl-tools
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/agentic-compact dist/agentic-compact-${{ matrix.target }}
+      - run: CARGO_TARGET_DIR=target-rebuild cargo build --release --locked --target ${{ matrix.target }}
+      - run: cmp dist/agentic-compact-${{ matrix.target }} target-rebuild/${{ matrix.target }}/release/agentic-compact
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agentic-compact-${{ matrix.target }}
+          path: dist/agentic-compact-${{ matrix.target }}
+          if-no-files-found: error
+
+  provenance:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: agentic-compact-*
+          path: dist
+          merge-multiple: true
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.0
+      - run: |
+          python3 scripts/release-metadata.py dist/agentic-compact-* \
+            --project-source-commit "${GITHUB_SHA}" \
+            --rustc-version "$(rustc --version)" \
+            --test-summary "release quality and four reproducible artifact builds passed" \
+            --output dist/release-metadata.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agentic-compact-release-metadata
+          path: dist/release-metadata.json
+          if-no-files-found: error
