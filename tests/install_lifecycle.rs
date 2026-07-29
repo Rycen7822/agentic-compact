@@ -34,6 +34,11 @@ async fn official_plugin_lifecycle_and_loaded_thread_upgrade_guard() {
             .unwrap(),
         initial_config
     );
+    assert!(
+        std::fs::read_to_string(&config_path)
+            .unwrap()
+            .contains(r#"env_vars = ["CODEX_HOME"]"#)
+    );
 
     let upgrade_home = home.clone();
     let upgrade_codex_home = server.codex_home().to_owned();

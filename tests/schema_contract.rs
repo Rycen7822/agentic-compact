@@ -176,8 +176,22 @@ fn plugin_cli_uses_verified_commands_for_both_supported_versions() {
         .zip(["codex-cli 0.146.0", "codex-cli 0.145.0"])
     {
         let fixture: Value = serde_json::from_str(fixture).unwrap();
+        assert_eq!(fixture["schemaVersion"], 2);
         assert_eq!(fixture["codexVersion"], version);
         assert_eq!(fixture["selector"], "agentic-compact@agentic-compact");
+        assert_eq!(
+            fixture["commands"]["mcpGet"],
+            serde_json::json!(["mcp", "get", "agentic-compact", "--json"])
+        );
+        assert_eq!(
+            fixture["commands"]["mcpGetConfigOverrides"],
+            serde_json::json!([
+                "mcp_servers.agentic-compact.command={binary}",
+                "mcp_servers.agentic-compact.args=[\"mcp\"]",
+                "mcp_servers.agentic-compact.env_vars=[\"CODEX_HOME\"]",
+                "mcp_servers.agentic-compact.default_tools_approval_mode=\"approve\""
+            ])
+        );
         assert_eq!(
             fixture["commands"]["pluginAdd"],
             serde_json::json!(["plugin", "add", "agentic-compact@agentic-compact", "--json"])

@@ -14,7 +14,7 @@ stock Codex TUI ───────┐
 agentic-compact MCP ───┘
 ```
 
-The launcher is required because a TUI using an embedded app-server is not reachable by an external controller. The plugin and TUI must subscribe to the same live `threadId` in the same app-server process.
+The launcher is required because a TUI using an embedded app-server is not reachable by an external controller. The plugin and TUI must subscribe to the same live `threadId` in the same app-server process; the installer therefore whitelists `CODEX_HOME` into the stdio MCP environment so both clients resolve the same default socket.
 
 The frozen Codex 0.146.0 runtime has been verified to preserve this topology: the MCP/orchestrator PID remains unchanged through `thread/inject_items`, empty continuation, journal cooldown, and TUI turn completion. No controller daemon, detached helper, or secondary IPC layer is present.
 

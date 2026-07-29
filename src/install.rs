@@ -5,7 +5,10 @@ use crate::cli::{InstallArgs, UninstallArgs};
 use crate::error::{Error, ErrorCode, Result};
 use crate::launcher::resolve_supported_codex_binary;
 use crate::observability::sha256_hex;
-use plugin_cli::{install_plugin_with_cli, remove_plugin_with_cli};
+use plugin_cli::{
+    install_plugin_with_cli, remove_plugin_with_cli, validate_mcp_config_after_write,
+    validate_mcp_config_before_write,
+};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -77,6 +80,7 @@ pub async fn install(args: InstallArgs) -> Result<()> {
     }
     write_plugin_tree(&plugin_root, &plugin_files)?;
 
+    validate_mcp_config_before_write(&codex_binary, &binary_path).await?;
     let config_path = codex_home.join("config.toml");
     let config_section_sha256 = install_mcp_section(
         &config_path,
@@ -120,6 +124,7 @@ pub async fn install(args: InstallArgs) -> Result<()> {
         wrapper_sha256,
     };
     save_state(&state_path, &state)?;
+    validate_mcp_config_after_write(&codex_binary, &codex_home, &state.binary_path).await?;
     install_plugin_with_cli(&codex_binary, &codex_home, &state.plugin_root).await?;
     println!(
         "{}",
@@ -213,6 +218,9 @@ fn install_mcp_section(
     let mut args = Array::new();
     args.push("mcp");
     desired.insert("args", Item::Value(TomlValue::Array(args)));
+    let mut env_vars = Array::new();
+    env_vars.push("CODEX_HOME");
+    desired.insert("env_vars", Item::Value(TomlValue::Array(env_vars)));
     desired.insert("default_tools_approval_mode", value("approve"));
     let desired_item = Item::Table(desired);
     let desired_hash = sha256_hex(desired_item.to_string().as_bytes());

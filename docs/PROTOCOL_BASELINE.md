@@ -121,7 +121,7 @@ The production orchestrator, UDS transport, atomic journal and three-regular-tur
 
 ### Plugin CLI
 
-Codex 0.146.0 and 0.145.0 use `plugin marketplace add/remove` and `plugin add/remove`; they do not use install/uninstall verbs. Exact JSON command vectors and output key contracts are frozen per version under `tests/fixtures/codex-cli/`. The ownership-aware installer invokes those commands directly, and repeated install plus add/list/remove/uninstall cycles pass in isolated `CODEX_HOME` environments without direct cache writes.
+Codex 0.146.0 and 0.145.0 use `plugin marketplace add/remove`, `plugin add/remove` and `mcp get <name> --json`; they do not use install/uninstall verbs. Exact JSON command vectors and output key contracts are frozen per version under `tests/fixtures/codex-cli/`. The ownership-aware installer invokes those commands directly, validates its MCP fields with target-version overrides in a disposable `CODEX_HOME`, and verifies the effective stdio server after the real TOML merge. Repeated install plus add/list/remove/uninstall cycles pass in isolated homes without direct cache writes. A Codex-spawned stdio MCP receives a non-default `CODEX_HOME` only when the managed server section forwards it through `env_vars`; an isolated 0.145.0 stock-TUI transition passed with that whitelist and no `$HOME/.codex` fallback.
 
 ### Launcher classification
 

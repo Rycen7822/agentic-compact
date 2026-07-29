@@ -107,12 +107,13 @@ The installer writes one explicit user configuration section:
 [mcp_servers."agentic-compact"]
 command = "/absolute/path/to/agentic-compact"
 args = ["mcp"]
+env_vars = ["CODEX_HOME"]
 default_tools_approval_mode = "approve"
 ```
 
-The plugin manifest intentionally does not declare the MCP server. This prevents duplicate definitions and keeps executable ownership explicit.
+The `CODEX_HOME` whitelist keeps the launcher and Codex-spawned MCP on the same default socket when a non-default Codex home is active. The plugin manifest intentionally does not declare the MCP server, preventing duplicate definitions while keeping executable ownership explicit.
 
-`install` emits a complete local marketplace root and invokes the frozen Codex 0.146.0/0.145.0 `plugin marketplace add` and `plugin add` commands; `uninstall` uses the matching official remove commands and never writes the plugin cache directly.
+`install` validates the managed fields through the target Codex config parser before writing, verifies the effective server afterward, emits a complete local marketplace root and invokes the frozen Codex 0.146.0/0.145.0 `plugin marketplace add` and `plugin add` commands; `uninstall` uses the matching official remove commands and never writes the plugin cache directly.
 
 ### TUI launcher
 

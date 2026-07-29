@@ -2,7 +2,7 @@
 
 A release tag must not be created until every blocking item below passes against a named Codex build.
 
-Current state: Phase 0–6 pass against Codex CLI 0.146.0, and the local stable-N-1 contract/installer/real-process probes pass against 0.145.0. Phase 7 GitHub matrix execution, cross-platform artifacts, macOS experience and publication gates remain open.
+Current state: Phase 0–6 pass against Codex CLI 0.146.0, and the local stable-N-1 contract, installer, real-process and stock-TUI transition probes pass against 0.145.0. Phase 7 GitHub matrix execution, cross-platform artifacts, macOS experience and publication gates remain open.
 
 ## Static and unit gates
 
@@ -55,7 +55,7 @@ Latest measured Phase 6 evidence: 180/180 transitions passed with zero integrity
 
 ## Installation gates
 
-The isolated installer lifecycle passes against Codex 0.146.0 and 0.145.0: complete marketplace root, official plugin enable/remove, idempotent reinstall, one config backup, unrelated-TOML preservation, loaded-thread upgrade deferral, all-owned-surface preflight before deletion, and zero partial uninstall after managed-state modification. A fresh current-version installed binary passes authenticated disposable doctor probes with `ready: true`.
+The isolated installer lifecycle passes against Codex 0.146.0 and 0.145.0: target-parser validation before the TOML write, effective-server verification afterward, complete marketplace root, official plugin enable/remove, idempotent reinstall, one config backup, unrelated-TOML preservation, loaded-thread upgrade deferral, all-owned-surface preflight before deletion, and zero partial uninstall after managed-state modification. A fresh current-version installed binary passes authenticated disposable doctor probes with `ready: true`; a fresh 0.145.0 custom-`CODEX_HOME` installation also passes the complete stock-TUI transition without a fallback `$HOME/.codex` path.
 
 ## Artifacts
 
@@ -68,4 +68,4 @@ Build and hash:
 
 Publish SHA-256 and a provenance file containing both supported Codex user-agent/schema/source contracts, Rust version and test summary.
 
-`.github/workflows/ci.yml` and `.github/workflows/release-artifacts.yml` define blocking 0.146.0/0.145.0 schema and quality matrices; release CI also defines four native runner builds, rebuild-and-compare reproducibility checks and two-contract provenance generation. `.github/workflows/codex-main-canary.yml` defines the nonblocking daily upstream-main stable-schema surface check. These workflows, the macOS arm64 manual experience gate and a real project source commit remain external blockers; no local result is represented as a published artifact.
+`.github/workflows/ci.yml` and `.github/workflows/release-artifacts.yml` define blocking 0.146.0/0.145.0 schema and quality matrices; release CI also defines four native runner builds, rebuild-and-compare reproducibility checks and two-contract provenance generation. The first blocking CI run passed both versions' schema/static/default suites but failed because the real app-server kill test unnecessarily required `auth.json`; the local working tree removes that dependency and passes the empty-home regression, full suite and authenticated real tests, but a pushed green rerun is still required. `.github/workflows/codex-main-canary.yml` defines the nonblocking daily upstream-main stable-schema surface check. Release/canary execution, four artifacts, provenance publication and the macOS arm64 manual experience gate remain external blockers.

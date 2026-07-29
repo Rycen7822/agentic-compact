@@ -1,9 +1,16 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "codexVersion": "codex-cli 0.145.0",
   "selector": "agentic-compact@agentic-compact",
   "marketplaceName": "agentic-compact",
   "commands": {
+    "mcpGet": ["mcp", "get", "agentic-compact", "--json"],
+    "mcpGetConfigOverrides": [
+      "mcp_servers.agentic-compact.command={binary}",
+      "mcp_servers.agentic-compact.args=[\"mcp\"]",
+      "mcp_servers.agentic-compact.env_vars=[\"CODEX_HOME\"]",
+      "mcp_servers.agentic-compact.default_tools_approval_mode=\"approve\""
+    ],
     "marketplaceAdd": ["plugin", "marketplace", "add", "{source}", "--json"],
     "marketplaceList": ["plugin", "marketplace", "list", "--json"],
     "pluginAdd": ["plugin", "add", "agentic-compact@agentic-compact", "--json"],
@@ -12,6 +19,7 @@
     "marketplaceRemove": ["plugin", "marketplace", "remove", "agentic-compact", "--json"]
   },
   "jsonContracts": {
+    "mcpGet": ["name", "enabled", "disabled_reason", "transport"],
     "marketplaceAdd": ["marketplaceName", "installedRoot", "alreadyAdded"],
     "marketplaceList": ["marketplaces"],
     "pluginAdd": [

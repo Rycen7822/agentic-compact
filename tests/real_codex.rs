@@ -14,9 +14,9 @@ struct AppServer {
 }
 
 #[tokio::test]
-#[ignore = "requires frozen Codex and kills an isolated real app-server"]
+#[ignore = "requires frozen Codex and kills an isolated unauthenticated app-server"]
 async fn killed_real_app_server_fails_closed_without_a_retry() {
-    let (mut server, socket) = start_app_server().await;
+    let (mut server, socket) = start_app_server(false).await;
     let client = AppServerClient::connect(&socket).await.unwrap();
     let mut events = client.subscribe();
     let pid = server._child.id().unwrap().to_string();
@@ -50,7 +50,7 @@ async fn killed_real_app_server_fails_closed_without_a_retry() {
 #[tokio::test]
 #[ignore = "requires authenticated frozen Codex and starts a real empty turn"]
 async fn resumes_same_thread_100_times_without_mutating_settings() {
-    let (server, socket) = start_app_server().await;
+    let (server, socket) = start_app_server(true).await;
     let owner = AppServerClient::connect(&socket).await.unwrap();
     let started = owner.start_thread(false).await.unwrap();
     let mut events = owner.subscribe();
@@ -137,9 +137,11 @@ async fn wait_for_turn(
     .expect("empty persistence turn did not complete");
 }
 
-async fn start_app_server() -> (AppServer, PathBuf) {
+async fn start_app_server(authenticated: bool) -> (AppServer, PathBuf) {
     let home = tempfile::tempdir().unwrap();
-    seed_codex_home(home.path());
+    if authenticated {
+        seed_codex_home(home.path());
+    }
     let socket = home.path().join("agentic-compact-real.sock");
     let codex = std::env::var_os("AGENTIC_COMPACT_CODEX_BIN").unwrap_or_else(|| "codex".into());
     let mut child = Command::new(codex)

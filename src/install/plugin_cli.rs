@@ -6,11 +6,46 @@ use std::process::Stdio;
 use std::time::Duration;
 use tokio::process::Command;
 use tokio::time::timeout;
+use uuid::Uuid;
 
 const MARKETPLACE_NAME: &str = "agentic-compact";
 const PLUGIN_SELECTOR: &str = "agentic-compact@agentic-compact";
-const PLUGIN_CLI_TIMEOUT: Duration = Duration::from_secs(30);
-const MAX_PLUGIN_CLI_OUTPUT: usize = 1024 * 1024;
+const MANAGED_SERVER: &str = "agentic-compact";
+const CODEX_CLI_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_CODEX_CLI_OUTPUT: usize = 1024 * 1024;
+
+pub(super) async fn validate_mcp_config_before_write(
+    codex: &Path,
+    binary_path: &Path,
+) -> Result<()> {
+    let validation_home =
+        std::env::temp_dir().join(format!("agentic-compact-config-{}", Uuid::new_v4()));
+    std::fs::create_dir(&validation_home)?;
+    let result = run_json(
+        codex,
+        &validation_home,
+        mcp_get_args(Some(binary_path))?,
+        "MCP config validation",
+    )
+    .await;
+    std::fs::remove_dir_all(&validation_home)?;
+    validate_mcp_server(&result?, binary_path)
+}
+
+pub(super) async fn validate_mcp_config_after_write(
+    codex: &Path,
+    codex_home: &Path,
+    binary_path: &Path,
+) -> Result<()> {
+    let result = run_json(
+        codex,
+        codex_home,
+        mcp_get_args(None)?,
+        "MCP effective config validation",
+    )
+    .await?;
+    validate_mcp_server(&result, binary_path)
+}
 
 pub(super) async fn install_plugin_with_cli(
     codex: &Path,
@@ -167,6 +202,55 @@ async fn remove_plugin(codex: &Path, codex_home: &Path) -> Result<()> {
     require_string(&removed, "pluginId", PLUGIN_SELECTOR)
 }
 
+fn mcp_get_args(binary_path: Option<&Path>) -> Result<Vec<OsString>> {
+    let mut args = Vec::new();
+    if let Some(binary_path) = binary_path {
+        let command = serde_json::to_string(&binary_path.display().to_string())?;
+        for value in [
+            format!("mcp_servers.{MANAGED_SERVER}.command={command}"),
+            format!("mcp_servers.{MANAGED_SERVER}.args=[\"mcp\"]"),
+            format!("mcp_servers.{MANAGED_SERVER}.env_vars=[\"CODEX_HOME\"]"),
+            format!("mcp_servers.{MANAGED_SERVER}.default_tools_approval_mode=\"approve\""),
+        ] {
+            args.extend([OsString::from("-c"), OsString::from(value)]);
+        }
+    }
+    args.extend([
+        OsString::from("mcp"),
+        OsString::from("get"),
+        OsString::from(MANAGED_SERVER),
+        OsString::from("--json"),
+    ]);
+    Ok(args)
+}
+
+fn validate_mcp_server(value: &Value, binary_path: &Path) -> Result<()> {
+    require_string(value, "name", MANAGED_SERVER)?;
+    if value.get("enabled").and_then(Value::as_bool) != Some(true)
+        || !value
+            .get("disabled_reason")
+            .is_some_and(serde_json::Value::is_null)
+    {
+        return Err(invalid_output("managed MCP server is not enabled"));
+    }
+    let transport = value
+        .get("transport")
+        .ok_or_else(|| invalid_output("Codex MCP JSON omitted transport"))?;
+    require_string(transport, "type", "stdio")?;
+    let command = require_path(transport, "command")?;
+    require_same_path(&command, binary_path, "MCP command")?;
+    if transport.get("args") != Some(&serde_json::json!(["mcp"]))
+        || transport.get("env_vars") != Some(&serde_json::json!(["CODEX_HOME"]))
+        || !transport.get("env").is_some_and(serde_json::Value::is_null)
+        || !transport.get("cwd").is_some_and(serde_json::Value::is_null)
+    {
+        return Err(invalid_output(
+            "managed MCP stdio arguments or environment did not match",
+        ));
+    }
+    Ok(())
+}
+
 async fn run_json(
     codex: &Path,
     codex_home: &Path,
@@ -180,7 +264,7 @@ async fn run_json(
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .kill_on_drop(true);
-    let output = timeout(PLUGIN_CLI_TIMEOUT, command.output())
+    let output = timeout(CODEX_CLI_TIMEOUT, command.output())
         .await
         .map_err(|_| Error::timeout("install", format!("Codex {operation} timed out")))??;
     if !output.status.success() {
@@ -189,11 +273,11 @@ async fn run_json(
                 .component("install"),
         );
     }
-    if output.stdout.len() > MAX_PLUGIN_CLI_OUTPUT {
-        return Err(invalid_output("Codex plugin JSON exceeded 1 MiB"));
+    if output.stdout.len() > MAX_CODEX_CLI_OUTPUT {
+        return Err(invalid_output("Codex JSON exceeded 1 MiB"));
     }
     serde_json::from_slice(&output.stdout)
-        .map_err(|_| invalid_output("Codex plugin command returned invalid JSON"))
+        .map_err(|_| invalid_output("Codex command returned invalid JSON"))
 }
 
 fn require_string(value: &Value, field: &str, expected: &str) -> Result<()> {
