@@ -11,4 +11,4 @@
 - Completed Phase 5 with durable full-capsule journaling, fixed crash-state dispositions, uniquely provable pre-injection and continuation recovery, active-descendant guards, user-wins integration coverage and server-request fail-closed tests.
 - Completed Phase 6 with malformed transport and process-kill chaos coverage, 180 production-path cooldown transitions, parallel thread isolation, latency/journal/RSS SLOs and a fresh stock-TUI scrollback/rendering capture.
 - Added target-version MCP config validation, effective-server verification, a complete installer-emitted marketplace root, official Codex plugin add/remove lifecycle, custom-`CODEX_HOME` propagation to the MCP, atomic ownership preflight, loaded-thread upgrade deferral, authenticated installed-binary doctor validation, blocking stable/stable-N-1 CI, an authentication-independent app-server kill gate and reproducible two-contract artifact provenance/workflow definitions.
-- Phase 7 workflow execution, macOS arm64 manual validation and publication remain pending.
+- macOS arm64 manual validation and publication remain pending.

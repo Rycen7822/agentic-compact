@@ -2,7 +2,7 @@
 
 A release tag must not be created until every blocking item below passes against a named Codex build.
 
-Current state: Phase 0–6 pass against Codex CLI 0.146.0, and the local stable-N-1 contract, installer, real-process and stock-TUI transition probes pass against 0.145.0. Phase 7 GitHub matrix execution, cross-platform artifacts, macOS experience and publication gates remain open.
+This document defines release gates and intentionally does not snapshot live workflow status. Release evidence must be bound to the exact candidate commit: inspect that commit's blocking CI, main canary, release-artifacts run and manual experience records before tagging.
 
 ## Static and unit gates
 
@@ -68,4 +68,4 @@ Build and hash:
 
 Publish SHA-256 and a provenance file containing both supported Codex user-agent/schema/source contracts, Rust version and test summary.
 
-`.github/workflows/ci.yml` and `.github/workflows/release-artifacts.yml` define blocking 0.146.0/0.145.0 schema and quality matrices; release CI also defines four native runner builds, rebuild-and-compare reproducibility checks and two-contract provenance generation. The first blocking CI run passed both versions' schema/static/default suites but failed because the real app-server kill test unnecessarily required `auth.json`; the local working tree removes that dependency and passes the empty-home regression, full suite and authenticated real tests, but a pushed green rerun is still required. `.github/workflows/codex-main-canary.yml` defines the nonblocking daily upstream-main stable-schema surface check. Release/canary execution, four artifacts, provenance publication and the macOS arm64 manual experience gate remain external blockers.
+`.github/workflows/ci.yml` defines the blocking 0.146.0/0.145.0 schema and quality matrix. `.github/workflows/release-artifacts.yml` repeats that quality matrix, performs clean byte-for-byte rebuild comparisons for four native targets and emits two-contract provenance. `.github/workflows/codex-main-canary.yml` defines the nonblocking daily upstream-main stable-schema surface check. Automation does not replace the macOS arm64 manual experience gate or authorize publication.
