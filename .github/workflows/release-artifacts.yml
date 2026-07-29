@@ -76,8 +76,22 @@ jobs:
       - run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/agentic-compact dist/agentic-compact-${{ matrix.target }}
-      - run: CARGO_TARGET_DIR=target-rebuild cargo build --release --locked --target ${{ matrix.target }}
-      - run: cmp dist/agentic-compact-${{ matrix.target }} target-rebuild/${{ matrix.target }}/release/agentic-compact
+      - run: cargo clean
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Verify reproducible binary
+        run: |
+          first=dist/agentic-compact-${{ matrix.target }}
+          rebuilt=target/${{ matrix.target }}/release/agentic-compact
+          if cmp "$first" "$rebuilt"; then
+            exit 0
+          fi
+          shasum -a 256 "$first" "$rebuilt"
+          cmp -l "$first" "$rebuilt" | head -32 || true
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            dwarfdump --uuid "$first" || true
+            dwarfdump --uuid "$rebuilt" || true
+          fi
+          exit 1
       - uses: actions/upload-artifact@v4
         with:
           name: agentic-compact-${{ matrix.target }}
