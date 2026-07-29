@@ -36,12 +36,10 @@ Validated against the frozen Codex 0.146.0 build:
 
 The frozen 0.145.0 contract independently passes regenerated stable-schema comparison, official plugin and installer lifecycles, real app-server termination handling and authenticated 100-resume preservation. Earlier Codex versions fail closed as unsupported.
 
-Still pending:
+Release boundary:
 
-- Phase 7 GitHub workflow execution, cross-platform artifacts, real-commit provenance and macOS arm64 experience;
-- GitHub pull request.
-
-Read [`handoff.md`](handoff.md) before continuing development.
+- tag only a candidate whose blocking stable/stable-N-1 CI, current-main canary, four reproducible native artifacts and commit-bound provenance all pass;
+- require a real macOS arm64 stock-TUI experience gate; automated artifact builds do not replace it.
 
 ## Architecture
 
