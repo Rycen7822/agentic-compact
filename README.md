@@ -38,8 +38,8 @@ The frozen 0.145.0 contract independently passes regenerated stable-schema compa
 
 Release boundary:
 
-- tag only a candidate whose blocking stable/stable-N-1 CI, current-main canary, four reproducible native artifacts and commit-bound provenance all pass;
-- require a real macOS arm64 stock-TUI experience gate; automated artifact builds do not replace it.
+- tag only a candidate whose blocking stable/stable-N-1 CI, current-main canary, three reproducible native artifacts and commit-bound provenance all pass;
+- v0.1.0 publishes Linux x86_64 musl, Linux arm64 musl and macOS x86_64 only; it does not publish or claim macOS arm64/Apple Silicon support.
 
 ## Architecture
 

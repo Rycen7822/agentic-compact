@@ -52,9 +52,6 @@ jobs:
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
             install_musl: true
-          - runner: macos-14
-            target: aarch64-apple-darwin
-            install_musl: false
           - runner: macos-15-intel
             target: x86_64-apple-darwin
             install_musl: false
@@ -115,7 +112,7 @@ jobs:
           python3 scripts/release-metadata.py dist/agentic-compact-* \
             --project-source-commit "${GITHUB_SHA}" \
             --rustc-version "$(rustc --version)" \
-            --test-summary "release quality and four reproducible artifact builds passed" \
+            --test-summary "release quality and three reproducible artifact builds passed" \
             --output dist/release-metadata.json
       - uses: actions/upload-artifact@v4
         with:

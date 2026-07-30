@@ -63,9 +63,8 @@ Build and hash:
 
 - Linux x86_64 musl;
 - Linux arm64 musl;
-- macOS arm64;
 - macOS x86_64.
 
 Publish SHA-256 and a provenance file containing both supported Codex user-agent/schema/source contracts, Rust version and test summary.
 
-`.github/workflows/ci.yml` defines the blocking 0.146.0/0.145.0 schema and quality matrix. `.github/workflows/release-artifacts.yml` repeats that quality matrix, performs clean byte-for-byte rebuild comparisons for four native targets and emits two-contract provenance. `.github/workflows/codex-main-canary.yml` defines the nonblocking daily upstream-main stable-schema surface check. Automation does not replace the macOS arm64 manual experience gate or authorize publication.
+`.github/workflows/ci.yml` defines the blocking 0.146.0/0.145.0 schema and quality matrix. `.github/workflows/release-artifacts.yml` repeats that quality matrix, performs clean byte-for-byte rebuild comparisons for three native targets and emits two-contract provenance. `.github/workflows/codex-main-canary.yml` defines the nonblocking daily upstream-main stable-schema surface check. The v0.1.0 workflow and release assets must not contain or claim macOS arm64/Apple Silicon support; automation does not authorize publication.
