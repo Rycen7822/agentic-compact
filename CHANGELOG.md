@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 — unreleased
+## 0.1.0 — 2026-07-30
 
 - Implemented model-triggered same-thread native compaction, bounded checkpoint injection and empty-input continuation through one MCP/orchestrator process.
 - Added strict Codex metadata binding, bounded MCP/app-server transport, per-thread registry and lease, atomic journal, conservative recovery, LocalDaemon launcher, doctor and ownership-aware installer.
@@ -11,4 +11,4 @@
 - Completed Phase 5 with durable full-capsule journaling, fixed crash-state dispositions, uniquely provable pre-injection and continuation recovery, active-descendant guards, user-wins integration coverage and server-request fail-closed tests.
 - Completed Phase 6 with malformed transport and process-kill chaos coverage, 180 production-path cooldown transitions, parallel thread isolation, latency/journal/RSS SLOs and a fresh stock-TUI scrollback/rendering capture.
 - Added target-version MCP config validation, effective-server verification, a complete installer-emitted marketplace root, official Codex plugin add/remove lifecycle, custom-`CODEX_HOME` propagation to the MCP, atomic ownership preflight, loaded-thread upgrade deferral, authenticated installed-binary doctor validation, blocking stable/stable-N-1 CI, an authentication-independent app-server kill gate and reproducible two-contract artifact provenance/workflow definitions.
-- v0.1.0 publication remains pending; macOS arm64/Apple Silicon is outside this release's artifact and support scope.
+- Release artifacts target Linux x86_64 musl, Linux arm64 musl and macOS x86_64; macOS arm64/Apple Silicon is outside this release's artifact and support scope.
