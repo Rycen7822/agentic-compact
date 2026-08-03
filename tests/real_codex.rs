@@ -53,6 +53,8 @@ async fn resumes_same_thread_100_times_without_mutating_settings() {
     let (server, socket) = start_app_server(true).await;
     let owner = AppServerClient::connect(&socket).await.unwrap();
     let started = owner.start_thread(false).await.unwrap();
+    assert_eq!(started.model.as_deref(), Some("gpt-5.6-luna"));
+    assert_eq!(started.reasoning_effort.as_deref(), Some("high"));
     let mut events = owner.subscribe();
     let turn_id = owner.start_empty_turn(&started.thread.id).await.unwrap();
     wait_for_turn(&mut events, &started.thread.id, &turn_id).await;
@@ -188,8 +190,9 @@ fn seed_codex_home(target: &Path) {
         "real Codex test requires auth.json in the selected Codex home"
     );
     std::fs::copy(auth, target.join("auth.json")).unwrap();
-    let config = source.join("config.toml");
-    if config.is_file() {
-        std::fs::copy(config, target.join("config.toml")).unwrap();
-    }
+    std::fs::write(
+        target.join("config.toml"),
+        "model = \"gpt-5.6-luna\"\nmodel_reasoning_effort = \"high\"\n",
+    )
+    .unwrap();
 }

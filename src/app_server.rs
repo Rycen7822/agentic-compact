@@ -684,3 +684,7 @@ mod tests {
         assert_eq!(error.rpc_code, Some(-32001));
     }
 }
+
+#[cfg(test)]
+#[path = "app_server/phase0a_tests.rs"]
+mod phase0a_tests;

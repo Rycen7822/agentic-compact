@@ -1,10 +1,11 @@
 use serde_json::Value;
 
+const TARGET_SCHEMA: &str =
+    include_str!("fixtures/app-server/codex-cli-0.146.0/codex_app_server_protocol.v2.schemas.json");
+
 const CONTRACTS: [(&str, &str, &str); 2] = [
     (
-        include_str!(
-            "fixtures/app-server/codex-cli-0.146.0/codex_app_server_protocol.v2.schemas.json"
-        ),
+        TARGET_SCHEMA,
         include_str!("fixtures/app-server/codex-cli-0.146.0/baseline.json"),
         include_str!("fixtures/codex-cli/codex-cli-0.146.0/plugin-cli.json"),
     ),
@@ -32,6 +33,15 @@ fn required_contains(definition: &Value, field: &str) -> bool {
     definition["required"]
         .as_array()
         .is_some_and(|required| required.iter().any(|value| value == field))
+}
+
+fn thread_item<'a>(definitions: &'a Value, item_type: &str) -> &'a Value {
+    definitions["ThreadItem"]["oneOf"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["properties"]["type"]["enum"][0] == item_type)
+        .unwrap_or_else(|| panic!("missing ThreadItem variant {item_type}"))
 }
 
 #[test]
@@ -64,6 +74,52 @@ fn frozen_request_and_projection_shapes_match_the_client() {
     for (schema, _, _) in CONTRACTS {
         assert_request_and_projection_shapes(schema);
     }
+}
+
+#[test]
+fn target_schema_freezes_turn_and_active_work_shapes() {
+    let schema: Value = serde_json::from_str(TARGET_SCHEMA).unwrap();
+    let definitions = &schema["definitions"];
+    assert!(required_contains(&definitions["Thread"], "turns"));
+    assert_eq!(
+        definitions["Thread"]["properties"]["turns"]["type"],
+        "array"
+    );
+
+    let turn = &definitions["Turn"];
+    for field in ["id", "items", "status"] {
+        assert!(required_contains(turn, field));
+    }
+    assert_eq!(turn["properties"]["items"]["type"], "array");
+    assert_eq!(turn["properties"]["itemsView"]["default"], "full");
+    for view in ["notLoaded", "summary", "full"] {
+        assert!(contains_string(&definitions["TurnItemsView"], view));
+    }
+
+    let compact = thread_item(definitions, "contextCompaction");
+    assert!(required_contains(compact, "id"));
+    assert!(required_contains(compact, "type"));
+    assert!(compact["properties"].get("status").is_none());
+
+    for (item_type, status_definition) in [
+        ("commandExecution", "CommandExecutionStatus"),
+        ("fileChange", "PatchApplyStatus"),
+        ("mcpToolCall", "McpToolCallStatus"),
+        ("dynamicToolCall", "DynamicToolCallStatus"),
+        ("collabAgentToolCall", "CollabAgentToolCallStatus"),
+    ] {
+        assert!(required_contains(
+            thread_item(definitions, item_type),
+            "status"
+        ));
+        assert!(contains_string(
+            &definitions[status_definition],
+            "inProgress"
+        ));
+    }
+    let image = thread_item(definitions, "imageGeneration");
+    assert!(required_contains(image, "status"));
+    assert_eq!(image["properties"]["status"]["type"], "string");
 }
 
 fn assert_request_and_projection_shapes(schema: &str) {
