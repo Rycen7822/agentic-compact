@@ -202,7 +202,20 @@ async fn completes_schedule_through_same_thread_cooldown(user_wins_after_injecti
         thread(
             "thread",
             "idle",
-            json!([{"id": "source", "status": "completed", "items": []}]),
+            json!([{
+                "id": "source",
+                "status": "completed",
+                "items": [{
+                    "id": "request",
+                    "type": "mcpToolCall",
+                    "status": "completed",
+                    "server": "agentic-compact",
+                    "tool": "request_compaction",
+                    "result": {
+                        "_meta": {"agenticCompact": {"receiptId": scheduled.receipt_id}}
+                    }
+                }]
+            }]),
         ),
     )
     .await;
@@ -282,6 +295,13 @@ async fn completes_schedule_through_same_thread_cooldown(user_wins_after_injecti
     )
     .await;
 
+    let loaded = request(&mut server, "thread/loaded/list").await;
+    respond(
+        &server,
+        &loaded,
+        json!({"data": ["thread"], "nextCursor": null}),
+    )
+    .await;
     let injection = request(&mut server, "thread/inject_items").await;
     assert_eq!(injection["params"]["threadId"], "thread");
     assert_eq!(injection["params"]["items"].as_array().unwrap().len(), 2);

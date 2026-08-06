@@ -1,4 +1,4 @@
-use super::{Orchestrator, ensure_no_active_descendant, runner};
+use super::{Orchestrator, runner};
 use crate::app_server::AppServerClient;
 use crate::doctor::require_ready_capabilities;
 use crate::error::{Error, ErrorCode, Result};
@@ -108,7 +108,6 @@ async fn resume_persisted_checkpoint(
             )
             .component("recovery"));
         }
-        ensure_no_active_descendant(&client, &journal.thread_id).await?;
         runner::inject_and_continue(
             &orchestrator.journals,
             journal,
@@ -151,16 +150,10 @@ async fn confirm_continuation(journal: &mut TransitionJournal) -> Result<()> {
 }
 
 fn safe_checkpoint_recovery_snapshot(journal: &TransitionJournal, thread: &ThreadRef) -> bool {
-    if !thread.is_idle() {
-        return false;
-    }
     let Some(compact_turn_id) = journal.compact_turn_id.as_deref() else {
         return false;
     };
-    let Ok(compact_turn) = thread.ensure_exact_last_turn(compact_turn_id) else {
-        return false;
-    };
-    compact_turn.is_completed_pure_compaction()
+    runner::require_completed_compaction_boundary(thread, compact_turn_id).is_ok()
 }
 
 #[cfg(test)]

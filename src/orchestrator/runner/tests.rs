@@ -46,8 +46,19 @@ async fn source_result(events: Vec<AppEvent>) -> Result<()> {
     for event in events {
         sender.send(event).unwrap();
     }
-    let mut evidence = Evidence::default();
-    await_source_turn(&mut receiver, &bound(), "receipt", &mut evidence).await
+    await_source_turn(&mut receiver, &bound()).await
+}
+
+fn source_snapshot(items: Vec<ItemRef>) -> ThreadRef {
+    ThreadRef {
+        id: "thread".to_owned(),
+        parent_thread_id: None,
+        status: "idle".to_owned(),
+        turns: vec![TurnRef {
+            items,
+            ..turn("source", "completed")
+        }],
+    }
 }
 
 fn compaction_journal() -> TransitionJournal {
@@ -95,12 +106,16 @@ fn compact_started() -> AppEvent {
 }
 
 #[tokio::test]
-async fn binds_receipt_and_accepts_quiescent_source_completion() {
+async fn source_wait_uses_only_lifecycle_and_accepts_event_lag() {
     source_result(vec![
+        AppEvent::RequestCompactionResultInvalid {
+            thread_id: "thread".to_owned(),
+            turn_id: "source".to_owned(),
+        },
         AppEvent::ItemCompleted {
             thread_id: "thread".to_owned(),
             turn_id: "source".to_owned(),
-            item: request_item("receipt"),
+            item: request_item("stale-event-receipt"),
         },
         AppEvent::ItemCompleted {
             thread_id: "thread".to_owned(),
@@ -116,61 +131,48 @@ async fn binds_receipt_and_accepts_quiescent_source_completion() {
     .unwrap();
 }
 
-#[tokio::test]
-async fn rejects_missing_or_mismatched_receipt_without_waiting_for_turn_completion() {
+#[test]
+fn final_snapshot_requires_one_successful_matching_receipt() {
     for observed in [None, Some("other-receipt")] {
         let mut request = request_item("receipt");
         request.receipt_id = observed.map(str::to_owned);
-        let result = tokio::time::timeout(
-            std::time::Duration::from_millis(100),
-            source_result(vec![AppEvent::ItemCompleted {
-                thread_id: "thread".to_owned(),
-                turn_id: "source".to_owned(),
-                item: request,
-            }]),
-        )
-        .await
-        .expect("receipt mismatch waited for the source-turn timeout");
-        assert_eq!(result.unwrap_err().code, ErrorCode::Protocol);
+        assert_eq!(
+            validate_final_source_snapshot(&source_snapshot(vec![request]), "source", "receipt")
+                .unwrap_err()
+                .code,
+            ErrorCode::Protocol
+        );
     }
 
-    let result = tokio::time::timeout(
-        std::time::Duration::from_millis(100),
-        source_result(vec![AppEvent::RequestCompactionResultInvalid {
-            thread_id: "thread".to_owned(),
-            turn_id: "source".to_owned(),
-        }]),
-    )
-    .await
-    .expect("invalid receipt metadata waited for the source-turn timeout");
-    assert_eq!(result.unwrap_err().code, ErrorCode::Protocol);
+    let mut failed = request_item("receipt");
+    failed.has_error = true;
+    assert_eq!(
+        validate_final_source_snapshot(&source_snapshot(vec![failed]), "source", "receipt")
+            .unwrap_err()
+            .code,
+        ErrorCode::SourceTurnFailed
+    );
+    assert_eq!(
+        validate_final_source_snapshot(
+            &source_snapshot(vec![request_item("receipt"), request_item("receipt")]),
+            "source",
+            "receipt",
+        )
+        .unwrap_err()
+        .code,
+        ErrorCode::RecoveryAmbiguous
+    );
 }
 
-#[tokio::test]
-async fn permits_passive_reasoning_after_the_receipt() {
-    source_result(vec![
-        AppEvent::ItemCompleted {
-            thread_id: "thread".to_owned(),
-            turn_id: "source".to_owned(),
-            item: request_item("receipt"),
-        },
-        AppEvent::ItemStarted {
-            thread_id: "thread".to_owned(),
-            turn_id: "source".to_owned(),
-            item: item("reasoning", "reasoning", None),
-        },
-        AppEvent::ItemCompleted {
-            thread_id: "thread".to_owned(),
-            turn_id: "source".to_owned(),
-            item: item("reasoning", "reasoning", Some("completed")),
-        },
-        AppEvent::TurnCompleted {
-            thread_id: "thread".to_owned(),
-            turn: turn("source", "completed"),
-        },
-    ])
-    .await
-    .unwrap();
+#[test]
+fn final_snapshot_accepts_passive_items_after_the_receipt() {
+    let snapshot = source_snapshot(vec![
+        item("before", "commandExecution", Some("completed")),
+        request_item("receipt"),
+        item("reasoning", "reasoning", Some("completed")),
+        item("answer", "agentMessage", Some("completed")),
+    ]);
+    validate_final_source_snapshot(&snapshot, "source", "receipt").unwrap();
 }
 
 #[test]
@@ -190,15 +192,18 @@ fn continuation_reconciliation_requires_a_unique_turn() {
 
 #[test]
 fn mutation_boundaries_require_unique_completed_exact_last_turns() {
-    let source = crate::protocol::ThreadRef {
-        id: "thread".to_owned(),
-        parent_thread_id: None,
-        status: "idle".to_owned(),
-        turns: vec![turn("source", "completed")],
-    };
-    assert!(require_completed_source_boundary(&source, "source").is_ok());
+    let source = source_snapshot(vec![request_item("receipt")]);
+    assert!(validate_final_source_snapshot(&source, "source", "receipt").is_ok());
+    let mut active_source = source.clone();
+    active_source.status = "active".to_owned();
     assert_eq!(
-        require_completed_source_boundary(&source, "missing")
+        validate_final_source_snapshot(&active_source, "source", "receipt")
+            .unwrap_err()
+            .code,
+        ErrorCode::RaceLost
+    );
+    assert_eq!(
+        validate_final_source_snapshot(&source, "missing", "receipt")
             .unwrap_err()
             .code,
         ErrorCode::RecoveryAmbiguous
@@ -207,7 +212,7 @@ fn mutation_boundaries_require_unique_completed_exact_last_turns() {
     let mut duplicate = source.clone();
     duplicate.turns.push(turn("source", "completed"));
     assert_eq!(
-        require_completed_source_boundary(&duplicate, "source")
+        validate_final_source_snapshot(&duplicate, "source", "receipt")
             .unwrap_err()
             .code,
         ErrorCode::RecoveryAmbiguous
@@ -216,7 +221,7 @@ fn mutation_boundaries_require_unique_completed_exact_last_turns() {
     let mut newer = source.clone();
     newer.turns.push(turn("newer", "completed"));
     assert_eq!(
-        require_completed_source_boundary(&newer, "source")
+        validate_final_source_snapshot(&newer, "source", "receipt")
             .unwrap_err()
             .code,
         ErrorCode::RecoveryAmbiguous
@@ -230,40 +235,90 @@ fn mutation_boundaries_require_unique_completed_exact_last_turns() {
         ..source
     };
     assert!(require_completed_compaction_boundary(&compact, "compact").is_ok());
+
+    let mut impure = compact.clone();
+    impure.turns[0]
+        .items
+        .push(item("message", "agentMessage", Some("completed")));
+    assert_eq!(
+        require_completed_compaction_boundary(&impure, "compact")
+            .unwrap_err()
+            .code,
+        ErrorCode::CompactionFailed
+    );
+
+    let mut active_compact = compact.clone();
+    active_compact.status = "active".to_owned();
+    assert_eq!(
+        require_completed_compaction_boundary(&active_compact, "compact")
+            .unwrap_err()
+            .code,
+        ErrorCode::CompactionFailed
+    );
 }
 
-#[tokio::test]
-async fn rejects_activity_after_the_receipt() {
-    let error = source_result(vec![
-        AppEvent::ItemCompleted {
-            thread_id: "thread".to_owned(),
-            turn_id: "source".to_owned(),
-            item: request_item("receipt"),
-        },
-        AppEvent::ItemStarted {
-            thread_id: "thread".to_owned(),
-            turn_id: "source".to_owned(),
-            item: item("command", "commandExecution", None),
-        },
-    ])
-    .await
-    .unwrap_err();
-    assert_eq!(error.code, ErrorCode::QuiescenceViolation);
+#[test]
+fn final_snapshot_rejects_non_passive_work_after_the_receipt() {
+    let snapshot = source_snapshot(vec![
+        request_item("receipt"),
+        item("command", "commandExecution", Some("completed")),
+    ]);
+    assert_eq!(
+        validate_final_source_snapshot(&snapshot, "source", "receipt")
+            .unwrap_err()
+            .code,
+        ErrorCode::QuiescenceViolation
+    );
+}
+
+#[test]
+fn final_snapshot_rejects_native_compaction_before_or_after_request() {
+    for items in [
+        vec![
+            item("compact", "contextCompaction", None),
+            request_item("receipt"),
+        ],
+        vec![
+            request_item("receipt"),
+            item("compact", "contextCompaction", None),
+        ],
+    ] {
+        assert_eq!(
+            validate_final_source_snapshot(&source_snapshot(items), "source", "receipt")
+                .unwrap_err()
+                .code,
+            ErrorCode::RecentNativeCompaction
+        );
+    }
+}
+
+#[test]
+fn final_snapshot_maps_active_work_to_policy_rejection() {
+    let snapshot = source_snapshot(vec![
+        item("work", "commandExecution", Some("inProgress")),
+        request_item("receipt"),
+    ]);
+    assert_eq!(
+        validate_final_source_snapshot(&snapshot, "source", "receipt")
+            .unwrap_err()
+            .code,
+        ErrorCode::ActiveWork
+    );
+}
+
+#[test]
+fn final_snapshot_policy_rejections_cancel_the_accepted_transition() {
+    assert!(is_cancellation_error(ErrorCode::RecentNativeCompaction));
+    assert!(is_cancellation_error(ErrorCode::ActiveWork));
+    assert!(!is_cancellation_error(ErrorCode::Protocol));
 }
 
 #[tokio::test]
 async fn competing_turn_wins_before_source_completion() {
-    let error = source_result(vec![
-        AppEvent::ItemCompleted {
-            thread_id: "thread".to_owned(),
-            turn_id: "source".to_owned(),
-            item: request_item("receipt"),
-        },
-        AppEvent::TurnStarted {
-            thread_id: "thread".to_owned(),
-            turn: turn("user", "inProgress"),
-        },
-    ])
+    let error = source_result(vec![AppEvent::TurnStarted {
+        thread_id: "thread".to_owned(),
+        turn: turn("user", "inProgress"),
+    }])
     .await
     .unwrap_err();
     assert_eq!(error.code, ErrorCode::RaceLost);

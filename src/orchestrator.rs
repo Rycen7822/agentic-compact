@@ -10,7 +10,8 @@ use crate::lease::ThreadLease;
 use crate::metadata::BoundInvocation;
 use crate::observability::hash_identifier;
 use crate::protocol::{
-    ResumeSnapshot, ThreadRef, completed_regular_turns_after, project_current_window_evidence,
+    ResumeSnapshot, ThreadRef, completed_regular_turns_after,
+    completed_regular_turns_since_latest_compaction, project_current_window_evidence,
 };
 use dashmap::DashSet;
 use std::collections::HashSet;
@@ -113,13 +114,13 @@ impl Orchestrator {
             let events = client.subscribe();
             let snapshot = client.thread_resume(&bound.thread_id).await?;
             validate_resume_binding(&bound, &snapshot)?;
-            preflight_root_and_cooldown(&snapshot.thread, prior.as_ref())?;
+            preflight_root_and_cooldown(&snapshot.thread, &bound.turn_id, prior.as_ref())?;
             ensure_no_active_descendant(&client, &bound.thread_id).await?;
-            Ok::<_, Error>((events, snapshot))
+            Ok::<_, Error>(events)
         })
         .await;
 
-        let (events, snapshot) = match preparation {
+        let events = match preparation {
             Ok(Ok(prepared)) => prepared,
             Ok(Err(error)) => {
                 close_rejected_preparation(&client, &bound.thread_id).await;
@@ -170,7 +171,6 @@ impl Orchestrator {
                 &journals,
                 &mut journal,
                 &task_bound,
-                &snapshot,
                 &client,
                 events,
                 &task_receipt,
@@ -261,12 +261,21 @@ pub(super) fn validate_resume_binding(
 
 pub(super) fn preflight_root_and_cooldown(
     snapshot: &ThreadRef,
+    source_turn_id: &str,
     prior: Option<&TransitionJournal>,
 ) -> Result<()> {
     if snapshot.parent_thread_id.is_some() {
         return Err(Error::new(
             ErrorCode::NotRootThread,
             "agentic compaction is restricted to root threads",
+        )
+        .component("orchestrator"));
+    }
+    let source = snapshot.ensure_exact_last_turn(source_turn_id)?;
+    if !snapshot.is_active() || source.status != "inProgress" {
+        return Err(Error::new(
+            ErrorCode::RaceLost,
+            "source turn must be the active exact-last turn before scheduling",
         )
         .component("orchestrator"));
     }
@@ -286,6 +295,15 @@ pub(super) fn preflight_root_and_cooldown(
             )
             .component("orchestrator"));
         }
+    }
+    if completed_regular_turns_since_latest_compaction(snapshot, source_turn_id)?
+        .is_some_and(|completed| completed < COOLDOWN_REGULAR_TURNS)
+    {
+        return Err(Error::new(
+            ErrorCode::RecentNativeCompaction,
+            "3 completed regular turns are required after the latest native compaction",
+        )
+        .component("orchestrator"));
     }
     Ok(())
 }
@@ -352,6 +370,7 @@ pub(super) fn evidence_from_snapshot(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::TurnRef;
     use serde_json::json;
 
     #[test]
@@ -366,7 +385,7 @@ mod tests {
             true,
         )
         .unwrap();
-        let error = preflight_root_and_cooldown(&snapshot, None).unwrap_err();
+        let error = preflight_root_and_cooldown(&snapshot, "source", None).unwrap_err();
         assert_eq!(error.code, ErrorCode::NotRootThread);
     }
 
@@ -388,33 +407,79 @@ mod tests {
         let mut snapshot = ThreadRef::from_response(
             &json!({"thread": {
                 "id": "thread",
-                "status": "idle",
+                "status": "active",
                 "turns": [
                     {"id": "continuation", "status": "completed", "items": []},
                     {"id": "one", "status": "completed", "items": []},
                     {"id": "two", "status": "completed", "items": []},
-                    {"id": "three", "status": "completed", "items": []}
+                    {"id": "three", "status": "completed", "items": []},
+                    {"id": "source", "status": "inProgress", "items": []}
                 ]
             }}),
             true,
         )
         .unwrap();
-        assert!(preflight_root_and_cooldown(&snapshot, Some(&journal)).is_ok());
+        assert!(preflight_root_and_cooldown(&snapshot, "source", Some(&journal)).is_ok());
 
         snapshot.turns.push(snapshot.turns[0].clone());
         assert_eq!(
-            preflight_root_and_cooldown(&snapshot, Some(&journal))
+            preflight_root_and_cooldown(&snapshot, "source", Some(&journal))
                 .unwrap_err()
                 .code,
             ErrorCode::RecoveryAmbiguous
         );
+        snapshot.turns.pop();
 
         journal.continuation_turn_id = Some("missing".to_owned());
         assert_eq!(
-            preflight_root_and_cooldown(&snapshot, Some(&journal))
+            preflight_root_and_cooldown(&snapshot, "source", Some(&journal))
                 .unwrap_err()
                 .code,
             ErrorCode::RecoveryAmbiguous
+        );
+    }
+
+    #[test]
+    fn preflight_requires_active_exact_last_source_and_native_cooldown() {
+        let mut snapshot = ThreadRef::from_response(
+            &json!({"thread": {
+                "id": "thread",
+                "status": "active",
+                "turns": [
+                    {"id": "compact", "status": "completed", "items": [
+                        {"id": "item", "type": "contextCompaction"}
+                    ]},
+                    {"id": "one", "status": "completed", "items": []},
+                    {"id": "two", "status": "completed", "items": []},
+                    {"id": "source", "status": "inProgress", "items": []}
+                ]
+            }}),
+            true,
+        )
+        .unwrap();
+        assert_eq!(
+            preflight_root_and_cooldown(&snapshot, "source", None)
+                .unwrap_err()
+                .code,
+            ErrorCode::RecentNativeCompaction
+        );
+
+        snapshot.turns.insert(
+            3,
+            TurnRef {
+                id: "three".to_owned(),
+                status: "completed".to_owned(),
+                items: Vec::new(),
+            },
+        );
+        assert!(preflight_root_and_cooldown(&snapshot, "source", None).is_ok());
+
+        snapshot.status = "idle".to_owned();
+        assert_eq!(
+            preflight_root_and_cooldown(&snapshot, "source", None)
+                .unwrap_err()
+                .code,
+            ErrorCode::RaceLost
         );
     }
 }

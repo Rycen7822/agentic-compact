@@ -14,6 +14,14 @@ const MCP_SERVER_ALIASES: &[&str] = &["agentic-compact", "agentic_compact"];
 const REQUEST_COMPACTION_TOOL_ALIASES: &[&str] =
     &["request_compaction", "agentic_compact.request_compaction"];
 const RECEIPT_PROJECTION_COMPONENT: &str = "receipt_projection";
+const ACTIVE_WORK_ITEM_TYPES: &[&str] = &[
+    "commandExecution",
+    "fileChange",
+    "mcpToolCall",
+    "dynamicToolCall",
+    "collabAgentToolCall",
+    "imageGeneration",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TurnItemsMode {
@@ -451,6 +459,34 @@ pub fn completed_regular_turns_after(thread: &ThreadRef, turn_id: &str) -> Resul
         .count())
 }
 
+pub fn completed_regular_turns_since_latest_compaction(
+    thread: &ThreadRef,
+    source_turn_id: &str,
+) -> Result<Option<usize>> {
+    let source_index = thread.unique_turn_index(source_turn_id)?;
+    let Some(compact_index) = thread.turns[..source_index]
+        .iter()
+        .rposition(|turn| turn.status == "completed" && turn.is_compaction())
+    else {
+        return Ok(None);
+    };
+    Ok(Some(
+        thread.turns[compact_index + 1..source_index]
+            .iter()
+            .filter(|turn| turn.is_completed_regular())
+            .count(),
+    ))
+}
+
+pub fn has_active_work_through_turn(thread: &ThreadRef, source_turn_id: &str) -> Result<bool> {
+    Ok(thread
+        .ordered_items_through_turn(source_turn_id)?
+        .any(|(_, _, item)| {
+            ACTIVE_WORK_ITEM_TYPES.contains(&item.item_type.as_str())
+                && item.status.as_deref() == Some("inProgress")
+        }))
+}
+
 pub fn project_current_window_evidence(
     thread: &ThreadRef,
     source_turn_id: &str,
@@ -823,6 +859,81 @@ mod tests {
     }
 
     #[test]
+    fn native_compaction_cooldown_counts_only_regular_turns_before_source() {
+        let thread = ThreadRef::from_response(
+            &json!({"thread": {
+                "id": "thread",
+                "status": "active",
+                "turns": [
+                    {"id": "old-compact", "status": "completed", "items": [
+                        {"id": "old", "type": "contextCompaction", "status": "completed"}
+                    ]},
+                    {"id": "ignored", "status": "failed", "items": []},
+                    {"id": "latest-compact", "status": "completed", "items": [
+                        {"id": "latest", "type": "contextCompaction", "status": "completed"}
+                    ]},
+                    {"id": "one", "status": "completed", "items": []},
+                    {"id": "two", "status": "completed", "items": []},
+                    {"id": "source", "status": "inProgress", "items": []}
+                ]
+            }}),
+            true,
+        )
+        .unwrap();
+        assert_eq!(
+            completed_regular_turns_since_latest_compaction(&thread, "source").unwrap(),
+            Some(2)
+        );
+
+        let no_compaction = ThreadRef {
+            turns: thread.turns[3..].to_vec(),
+            ..thread
+        };
+        assert_eq!(
+            completed_regular_turns_since_latest_compaction(&no_compaction, "source").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn active_work_matches_only_the_six_owned_in_progress_types() {
+        for item_type in ACTIVE_WORK_ITEM_TYPES {
+            let thread = ThreadRef::from_response(
+                &json!({"thread": {
+                    "id": "thread",
+                    "status": "idle",
+                    "turns": [{"id": "source", "status": "completed", "items": [
+                        {"id": "work", "type": item_type, "status": "inProgress"}
+                    ]}]
+                }}),
+                true,
+            )
+            .unwrap();
+            assert!(has_active_work_through_turn(&thread, "source").unwrap());
+        }
+
+        for (item_type, status) in [
+            ("commandExecution", "completed"),
+            ("fileChange", "failed"),
+            ("futureWorkType", "inProgress"),
+            ("mcpToolCall", "unknown"),
+        ] {
+            let thread = ThreadRef::from_response(
+                &json!({"thread": {
+                    "id": "thread",
+                    "status": "idle",
+                    "turns": [{"id": "source", "status": "completed", "items": [
+                        {"id": "work", "type": item_type, "status": status}
+                    ]}]
+                }}),
+                true,
+            )
+            .unwrap();
+            assert!(!has_active_work_through_turn(&thread, "source").unwrap());
+        }
+    }
+
+    #[test]
     fn evidence_uses_the_last_completed_compaction_item_position() {
         let projected = evidence(
             vec![
@@ -1190,7 +1301,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_owned_metadata_is_forwarded_for_immediate_transition_failure() {
+    fn invalid_owned_metadata_is_isolated_until_full_snapshot_validation() {
         let invalid_item = json!({
             "id": "request",
             "type": "mcpToolCall",

@@ -170,7 +170,7 @@ impl TransitionServer {
         receipt_id: &str,
         checkpoint_id: &str,
     ) {
-        let (source_id, completed_at) = {
+        let (source_id, completed_at, request_item) = {
             let mut state = self.state.lock().unwrap();
             let thread = state.threads.get_mut(thread_id).unwrap();
             let (source_id, completed_at) = {
@@ -182,8 +182,26 @@ impl TransitionServer {
                 (record.source_id.clone(), completed_at)
             };
             set_turn_status(&mut thread.turns, &source_id, "completed");
+            let request_item = json!({
+                "id": format!("{thread_id}-request-{sequence}"),
+                "type": "mcpToolCall",
+                "status": "completed",
+                "server": "agentic-compact",
+                "tool": "request_compaction",
+                "result": {
+                    "_meta": {"agenticCompact": {"receiptId": receipt_id}}
+                }
+            });
+            thread
+                .turns
+                .iter_mut()
+                .find(|turn| turn["id"] == source_id)
+                .unwrap()["items"]
+                .as_array_mut()
+                .unwrap()
+                .push(request_item.clone());
             thread.status = "idle";
-            (source_id, completed_at)
+            (source_id, completed_at, request_item)
         };
         let completed_at_ms = completed_at.elapsed().as_millis() as i64;
         self.publish(json!({
@@ -192,16 +210,7 @@ impl TransitionServer {
                 "threadId": thread_id,
                 "turnId": source_id,
                 "completedAtMs": completed_at_ms,
-                "item": {
-                    "id": format!("{thread_id}-request-{sequence}"),
-                    "type": "mcpToolCall",
-                    "status": "completed",
-                    "server": "agentic-compact",
-                    "tool": "request_compaction",
-                    "result": {
-                        "_meta": {"agenticCompact": {"receiptId": receipt_id}}
-                    }
-                }
+                "item": request_item
             }
         }));
         self.publish(json!({

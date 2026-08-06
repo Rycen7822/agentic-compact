@@ -7,7 +7,7 @@ use crate::checkpoint::{Checkpoint, Evidence};
 use crate::error::{Error, ErrorCode, Result};
 use crate::journal::{JournalStore, TransitionJournal, TransitionState};
 use crate::metadata::BoundInvocation;
-use crate::protocol::{AppEvent, ResumeSnapshot, ThreadRef};
+use crate::protocol::{AppEvent, ThreadRef, has_active_work_through_turn};
 use std::collections::HashSet;
 use tokio::sync::broadcast;
 use tokio::time::timeout;
@@ -16,24 +16,23 @@ pub(super) async fn run_transition(
     journals: &JournalStore,
     journal: &mut TransitionJournal,
     bound: &BoundInvocation,
-    snapshot: &ResumeSnapshot,
     client: &AppServerClient,
     mut events: broadcast::Receiver<AppEvent>,
     receipt_id: &str,
 ) -> Result<()> {
-    let mut evidence = evidence_from_snapshot(&snapshot.thread, &bound.turn_id)?;
-    await_source_turn(&mut events, bound, receipt_id, &mut evidence).await?;
-
-    journal.transition(
-        TransitionState::ReadyToCompact,
-        "source turn completed and request item remained quiescent",
-    )?;
-    journals.save(journal)?;
+    await_source_turn(&mut events, bound).await?;
 
     reject_queued_competing_turn(&mut events, &bound.thread_id, &bound.turn_id)?;
     let thread = client.thread_read(&bound.thread_id, true).await?;
-    require_completed_source_boundary(&thread, &bound.turn_id)?;
+    let evidence = validate_final_source_snapshot(&thread, &bound.turn_id, receipt_id)?;
     ensure_no_active_descendant(client, &bound.thread_id).await?;
+    reject_queued_competing_turn(&mut events, &bound.thread_id, &bound.turn_id)?;
+
+    journal.transition(
+        TransitionState::ReadyToCompact,
+        "final full snapshot proved a completed quiescent source boundary",
+    )?;
+    journals.save(journal)?;
 
     journal.transition(
         TransitionState::CompactRequestSent,
@@ -100,6 +99,14 @@ pub(super) async fn inject_and_continue(
         return Err(Error::new(
             ErrorCode::RaceLost,
             "another turn started before checkpoint injection",
+        )
+        .component("orchestrator"));
+    }
+    ensure_no_active_descendant(client, thread_id).await?;
+    if drain_started_turn(&mut events, thread_id)?.is_some() {
+        return Err(Error::new(
+            ErrorCode::RaceLost,
+            "another turn started during the checkpoint injection guard",
         )
         .component("orchestrator"));
     }
@@ -179,88 +186,22 @@ pub(super) fn is_cancellation_error(code: ErrorCode) -> bool {
             | ErrorCode::QuiescenceViolation
             | ErrorCode::SourceTurnFailed
             | ErrorCode::ActiveSubagents
+            | ErrorCode::RecentNativeCompaction
+            | ErrorCode::ActiveWork
     )
 }
 
 async fn await_source_turn(
     events: &mut broadcast::Receiver<AppEvent>,
     bound: &BoundInvocation,
-    receipt_id: &str,
-    evidence: &mut Evidence,
 ) -> Result<()> {
     timeout(SOURCE_TURN_TIMEOUT, async {
-        let mut request_item_id: Option<String> = None;
         loop {
             let event = recv_event(events).await?;
             match event {
-                AppEvent::RequestCompactionResultInvalid { thread_id, turn_id }
-                    if thread_id == bound.thread_id && turn_id == bound.turn_id =>
-                {
-                    return Err(Error::new(
-                        ErrorCode::Protocol,
-                        "request_compaction result metadata is invalid",
-                    )
-                    .component("orchestrator"));
-                }
-                AppEvent::ItemCompleted {
-                    thread_id,
-                    turn_id,
-                    item,
-                } if thread_id == bound.thread_id && turn_id == bound.turn_id => {
-                    if request_item_id.is_none() && item.is_request_compaction_call() {
-                        if item.receipt_id.as_deref() != Some(receipt_id) {
-                            return Err(Error::new(
-                                ErrorCode::Protocol,
-                                "request_compaction result receipt did not match the schedule",
-                            )
-                            .component("orchestrator"));
-                        }
-                        if !item.completed_successfully() {
-                            return Err(Error::new(
-                                ErrorCode::SourceTurnFailed,
-                                "request_compaction tool item did not complete successfully",
-                            )
-                            .component("orchestrator"));
-                        }
-                        request_item_id = Some(item.id.clone());
-                        continue;
-                    }
-                    if request_item_id.is_some() && !is_passive_source_item(&item.item_type) {
-                        return Err(Error::new(
-                            ErrorCode::QuiescenceViolation,
-                            "source turn completed another item after request_compaction",
-                        )
-                        .component("orchestrator"));
-                    }
-                    for value in &item.safe_evidence {
-                        evidence.observe_item(value);
-                    }
-                }
-                AppEvent::ItemStarted {
-                    thread_id,
-                    turn_id,
-                    item,
-                } if thread_id == bound.thread_id
-                    && turn_id == bound.turn_id
-                    && request_item_id.is_some()
-                    && !is_passive_source_item(&item.item_type) =>
-                {
-                    return Err(Error::new(
-                        ErrorCode::QuiescenceViolation,
-                        "source turn started another item after request_compaction",
-                    )
-                    .component("orchestrator"));
-                }
                 AppEvent::TurnCompleted {
                     thread_id, turn, ..
                 } if thread_id == bound.thread_id && turn.id == bound.turn_id => {
-                    if request_item_id.is_none() {
-                        return Err(Error::new(
-                            ErrorCode::RecoveryAmbiguous,
-                            "source turn completed before the request tool item was identified",
-                        )
-                        .component("orchestrator"));
-                    }
                     if turn.status != "completed" {
                         return Err(Error::new(
                             ErrorCode::SourceTurnFailed,
@@ -268,7 +209,6 @@ async fn await_source_turn(
                         )
                         .component("orchestrator"));
                     }
-                    evidence.normalize();
                     return Ok(());
                 }
                 AppEvent::TurnStarted { thread_id, turn }
@@ -515,7 +455,11 @@ fn is_passive_source_item(item_type: &str) -> bool {
     matches!(item_type, "agentMessage" | "reasoning")
 }
 
-fn require_completed_source_boundary(thread: &ThreadRef, source_turn_id: &str) -> Result<()> {
+fn validate_final_source_snapshot(
+    thread: &ThreadRef,
+    source_turn_id: &str,
+    receipt_id: &str,
+) -> Result<Evidence> {
     let source = thread.ensure_exact_last_turn(source_turn_id)?;
     if source.status != "completed" || !thread.is_idle() {
         return Err(Error::new(
@@ -524,10 +468,71 @@ fn require_completed_source_boundary(thread: &ThreadRef, source_turn_id: &str) -
         )
         .component("orchestrator"));
     }
-    Ok(())
+    if source.is_compaction() {
+        return Err(Error::new(
+            ErrorCode::RecentNativeCompaction,
+            "source turn already performed native context compaction",
+        )
+        .component("orchestrator"));
+    }
+    if has_active_work_through_turn(thread, source_turn_id)? {
+        return Err(Error::new(
+            ErrorCode::ActiveWork,
+            "active tool work remains in the final source snapshot",
+        )
+        .component("orchestrator"));
+    }
+
+    let mut requests = source
+        .items
+        .iter()
+        .enumerate()
+        .filter(|(_, item)| item.is_request_compaction_call());
+    let (request_index, request) = requests.next().ok_or_else(|| {
+        Error::new(
+            ErrorCode::Protocol,
+            "final source snapshot is missing request_compaction",
+        )
+        .component("orchestrator")
+    })?;
+    if requests.next().is_some() {
+        return Err(Error::new(
+            ErrorCode::RecoveryAmbiguous,
+            "final source snapshot contains multiple request_compaction items",
+        )
+        .component("orchestrator"));
+    }
+    if !request.completed_successfully() {
+        return Err(Error::new(
+            ErrorCode::SourceTurnFailed,
+            "request_compaction tool item did not complete successfully",
+        )
+        .component("orchestrator"));
+    }
+    if request.receipt_id.as_deref() != Some(receipt_id) {
+        return Err(Error::new(
+            ErrorCode::Protocol,
+            "request_compaction result receipt did not match the schedule",
+        )
+        .component("orchestrator"));
+    }
+    if source.items[request_index + 1..]
+        .iter()
+        .any(|item| !is_passive_source_item(&item.item_type))
+    {
+        return Err(Error::new(
+            ErrorCode::QuiescenceViolation,
+            "source turn contains non-passive work after request_compaction",
+        )
+        .component("orchestrator"));
+    }
+    evidence_from_snapshot(thread, source_turn_id)
 }
 
-fn require_completed_compaction_boundary(thread: &ThreadRef, compact_turn_id: &str) -> Result<()> {
+pub(super) fn require_completed_compaction_boundary(
+    thread: &ThreadRef,
+    compact_turn_id: &str,
+) -> Result<()> {
     let compact = thread.ensure_exact_last_turn(compact_turn_id)?;
     if !thread.is_idle() || !compact.is_completed_pure_compaction() {
         return Err(Error::new(
