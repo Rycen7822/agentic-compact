@@ -1,6 +1,7 @@
 #![cfg(unix)]
 
 use agentic_compact::checkpoint::CompactionIntent;
+use agentic_compact::journal::JournalStore;
 use agentic_compact::lease::ThreadLease;
 use agentic_compact::metadata::BoundInvocation;
 use agentic_compact::orchestrator::Orchestrator;
@@ -60,12 +61,8 @@ async fn production_cooldown_soak_and_parallel_stress() {
         }
         for (thread_id, warm, result) in &scheduled {
             warm_attach.push(*warm);
-            server.complete_source(
-                thread_id,
-                sequence,
-                &result.receipt_id,
-                &result.checkpoint_id,
-            );
+            let checkpoint_id = scheduled_checkpoint_id(thread_id);
+            server.complete_source(thread_id, sequence, &result.receipt_id, &checkpoint_id);
         }
         for (thread_id, _, _) in &scheduled {
             samples.push(server.wait_for_transition(thread_id, sequence).await);
@@ -129,14 +126,19 @@ async fn run_one(
         .await
         .unwrap();
     let warm = started.elapsed();
-    server.complete_source(
-        thread_id,
-        sequence,
-        &scheduled.receipt_id,
-        &scheduled.checkpoint_id,
-    );
+    let checkpoint_id = scheduled_checkpoint_id(thread_id);
+    server.complete_source(thread_id, sequence, &scheduled.receipt_id, &checkpoint_id);
     let sample = server.wait_for_transition(thread_id, sequence).await;
     (warm, sample)
+}
+
+fn scheduled_checkpoint_id(thread_id: &str) -> String {
+    JournalStore::open()
+        .unwrap()
+        .load(thread_id)
+        .unwrap()
+        .unwrap()
+        .checkpoint_id
 }
 
 fn invocation(thread_id: &str, turn_id: String) -> BoundInvocation {

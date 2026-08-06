@@ -1,5 +1,5 @@
 use crate::checkpoint::CompactionIntent;
-use crate::error::{Error, ErrorCode, Result};
+use crate::error::{ErrorCode, Result};
 use crate::metadata::BoundInvocation;
 use crate::orchestrator::Orchestrator;
 use serde::Deserialize;
@@ -10,6 +10,22 @@ use tracing::{info, warn};
 
 const MAX_STDIN_MESSAGE_BYTES: usize = 1024 * 1024;
 const DEFAULT_PROTOCOL_VERSION: &str = "2025-06-18";
+const INITIALIZE_INSTRUCTIONS: &str = "Call request_compaction only after a phase has conclusively ended, substantial work remains, and no command, test, approval, file change, or subagent is active. If scheduled, end the turn immediately; if rejected, continue without retrying in that turn.";
+const TOOL_DESCRIPTION: &str = "At a settled phase boundary, schedule Codex-native same-thread compaction, inject bounded continuity state, and continue automatically. Do not call during investigation, editing, testing, uncertainty, or soon after another compaction. If scheduled, end this turn immediately.";
+const PRESERVE_DESCRIPTION: &str = "Zero to four short facts the host cannot infer, ordered as: decisive conclusion or root cause; ruled-out route or invariant; interface or behavior constraint; unresolved risk or verification obligation.";
+const NEXT_ACTION_DESCRIPTION: &str =
+    "One concrete next step that remains valid after checking the current workspace.";
+const INVALID_JSON_RPC_MESSAGE: &str = "Invalid JSON-RPC request.";
+const MESSAGE_TOO_LARGE: &str = "MCP message exceeds the configured size limit.";
+const UNSUPPORTED_METHOD_MESSAGE: &str = "Unsupported MCP method.";
+const UNKNOWN_TOOL_MESSAGE: &str = "Unknown MCP tool.";
+
+struct RpcFailure {
+    code: i64,
+    message: &'static str,
+}
+
+type RpcResult = std::result::Result<Value, RpcFailure>;
 
 #[derive(Debug, Deserialize)]
 struct RpcRequest {
@@ -53,11 +69,7 @@ pub async fn serve() -> Result<()> {
         if bytes > MAX_STDIN_MESSAGE_BYTES {
             write_response(
                 &mut stdout,
-                json!({
-                    "jsonrpc": "2.0",
-                    "id": Value::Null,
-                    "error": {"code": -32600, "message": "MCP message exceeds 1 MiB"}
-                }),
+                rpc_error_envelope(Value::Null, -32600, MESSAGE_TOO_LARGE),
             )
             .await?;
             continue;
@@ -69,14 +81,10 @@ pub async fn serve() -> Result<()> {
 
         let request: RpcRequest = match serde_json::from_str(trimmed) {
             Ok(request) => request,
-            Err(error) => {
+            Err(_) => {
                 write_response(
                     &mut stdout,
-                    json!({
-                        "jsonrpc": "2.0",
-                        "id": Value::Null,
-                        "error": {"code": -32700, "message": format!("invalid JSON: {error}")}
-                    }),
+                    rpc_error_envelope(Value::Null, -32700, INVALID_JSON_RPC_MESSAGE),
                 )
                 .await?;
                 continue;
@@ -90,19 +98,7 @@ pub async fn serve() -> Result<()> {
         let response = handle_request(Arc::clone(&orchestrator), request).await;
         let envelope = match response {
             Ok(result) => json!({"jsonrpc": "2.0", "id": id, "result": result}),
-            Err(error) => json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "error": {
-                    "code": rpc_error_code(error.code),
-                    "message": error.to_string(),
-                    "data": {
-                        "reasonCode": error.code.as_str(),
-                        "component": error.component,
-                        "retryable": error.retryable
-                    }
-                }
-            }),
+            Err(error) => rpc_error_envelope(id, error.code, error.message),
         };
         write_response(&mut stdout, envelope).await?;
     }
@@ -111,7 +107,7 @@ pub async fn serve() -> Result<()> {
     Ok(())
 }
 
-async fn handle_request(orchestrator: Arc<Orchestrator>, request: RpcRequest) -> Result<Value> {
+async fn handle_request(orchestrator: Arc<Orchestrator>, request: RpcRequest) -> RpcResult {
     match request.method.as_str() {
         "initialize" => {
             let protocol_version = request
@@ -127,78 +123,52 @@ async fn handle_request(orchestrator: Arc<Orchestrator>, request: RpcRequest) ->
                     "title": "Agentic Compact",
                     "version": env!("CARGO_PKG_VERSION")
                 },
-                "instructions": "Use request_compaction only at a stable semantic boundary. After calling it, finish the current turn without starting new tools or subagents."
+                "instructions": INITIALIZE_INSTRUCTIONS
             }))
         }
         "ping" => Ok(json!({})),
         "tools/list" => Ok(tool_list()),
         "tools/call" => handle_tool_call(orchestrator, request.params).await,
-        _ => Err(Error::new(
-            ErrorCode::InvalidRequest,
-            format!("unsupported MCP method: {}", request.method),
-        )
-        .component("mcp")),
+        _ => Err(RpcFailure {
+            code: -32602,
+            message: UNSUPPORTED_METHOD_MESSAGE,
+        }),
     }
 }
 
-async fn handle_tool_call(orchestrator: Arc<Orchestrator>, params: Value) -> Result<Value> {
-    let params: ToolCallParams = serde_json::from_value(params).map_err(|error| {
-        Error::new(
-            ErrorCode::InvalidRequest,
-            format!("invalid tools/call parameters: {error}"),
-        )
-        .component("mcp")
+async fn handle_tool_call(orchestrator: Arc<Orchestrator>, params: Value) -> RpcResult {
+    let params: ToolCallParams = serde_json::from_value(params).map_err(|_| RpcFailure {
+        code: -32602,
+        message: INVALID_JSON_RPC_MESSAGE,
     })?;
     let bound = match BoundInvocation::from_meta(&params.meta) {
         Ok(bound) => bound,
-        Err(error) => return Ok(tool_error(error)),
+        Err(error) => return Ok(tool_rejected(error.code, error.code.model_message())),
     };
 
     match params.name.as_str() {
-        "status" | "agentic_compact.status" => {
-            if !params.arguments.is_null()
-                && params
-                    .arguments
-                    .as_object()
-                    .is_none_or(|object| !object.is_empty())
-            {
-                return Ok(tool_error(
-                    Error::invalid("status does not accept arguments").component("mcp"),
-                ));
-            }
-            match orchestrator.status(&bound).await {
-                Ok(status) => tool_success(serde_json::to_value(status)?),
-                Err(error) => Ok(tool_error(error)),
-            }
-        }
         "request_compaction" | "agentic_compact.request_compaction" => {
             let intent: CompactionIntent = match serde_json::from_value(params.arguments) {
                 Ok(intent) => intent,
-                Err(error) => {
-                    return Ok(tool_error(
-                        Error::new(
-                            ErrorCode::InvalidRequest,
-                            format!("invalid request_compaction arguments: {error}"),
-                        )
-                        .component("mcp"),
+                Err(_) => {
+                    return Ok(tool_rejected(
+                        ErrorCode::InvalidRequest,
+                        ErrorCode::InvalidRequest.model_message(),
                     ));
                 }
             };
             let intent = match intent.validate() {
                 Ok(intent) => intent,
-                Err(error) => return Ok(tool_error(error)),
+                Err(error) => return Ok(tool_rejected(error.code, error.code.model_message())),
             };
             match orchestrator.schedule(bound, intent).await {
-                Ok(scheduled) => tool_success(serde_json::to_value(scheduled)?),
-                Err(error) => Ok(tool_error(error)),
+                Ok(scheduled) => Ok(tool_scheduled(scheduled.receipt_id)),
+                Err(error) => Ok(tool_rejected(error.code, error.code.model_message())),
             }
         }
-        _ => Ok(tool_error(
-            Error::new(
-                ErrorCode::InvalidRequest,
-                format!("unknown tool: {}", params.name),
-            )
-            .component("mcp"),
+        _ => Ok(tool_rejected(
+            ErrorCode::InvalidRequest,
+            UNKNOWN_TOOL_MESSAGE,
         )),
     }
 }
@@ -207,106 +177,30 @@ fn tool_list() -> Value {
     json!({
         "tools": [
             {
-                "name": "status",
-                "title": "Agentic Compact Status",
-                "description": "Read whether same-thread agentic compaction is currently safe and available. This tool has no side effects.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {},
-                    "additionalProperties": false
-                },
-                "outputSchema": status_output_schema()
-            },
-            {
                 "name": "request_compaction",
                 "title": "Request Agentic Context Compaction",
-                "description": "Schedule Codex-native context compaction after the current turn completes, inject a bounded checkpoint, then continue in the same thread. Call only after active tests, commands, and subagents have finished. End the current turn immediately after this call.",
+                "description": TOOL_DESCRIPTION,
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "preserve": {
                             "type": "array",
-                            "description": "At most four short invariants that must survive compaction.",
+                            "description": PRESERVE_DESCRIPTION,
                             "items": {"type": "string", "minLength": 1, "maxLength": 96},
                             "maxItems": 4
                         },
                         "next_action": {
                             "type": "string",
-                            "description": "One directly executable next action after the checkpoint is restored.",
+                            "description": NEXT_ACTION_DESCRIPTION,
                             "minLength": 1,
                             "maxLength": 180
                         }
                     },
-                    "required": ["preserve", "next_action"],
+                    "required": ["next_action"],
                     "additionalProperties": false
                 },
                 "outputSchema": request_output_schema()
             }
-        ]
-    })
-}
-
-fn status_output_schema() -> Value {
-    json!({
-        "type": "object",
-        "oneOf": [
-            {
-                "type": "object",
-                "properties": {
-                    "version": {"type": "string"},
-                    "mode": {"type": "string"},
-                    "threadIdBound": {"type": "boolean"},
-                    "transitionPending": {"type": "boolean"},
-                    "cooldownTurnsRemaining": {"type": "integer", "minimum": 0},
-                    "activeContextTokens": {"type": ["integer", "null"]},
-                    "autoCompactLimit": {"type": ["integer", "null"]},
-                    "lastTransition": {
-                        "oneOf": [
-                            {"type": "null"},
-                            {
-                                "type": "object",
-                                "properties": {
-                                    "checkpointId": {"type": "string"},
-                                    "completedRegularTurnsAgo": {"type": "integer", "minimum": 0}
-                                },
-                                "required": ["checkpointId", "completedRegularTurnsAgo"],
-                                "additionalProperties": false
-                            }
-                        ]
-                    },
-                    "guards": {
-                        "type": "object",
-                        "properties": {
-                            "rootThread": {"type": "boolean"},
-                            "noActiveDescendants": {"type": "boolean"},
-                            "sharedAppServer": {"type": "boolean"},
-                            "emptyContinuation": {"type": "boolean"}
-                        },
-                        "required": [
-                            "rootThread",
-                            "noActiveDescendants",
-                            "sharedAppServer",
-                            "emptyContinuation"
-                        ],
-                        "additionalProperties": false
-                    },
-                    "reasonCode": {"type": ["string", "null"]}
-                },
-                "required": [
-                    "version",
-                    "mode",
-                    "threadIdBound",
-                    "transitionPending",
-                    "cooldownTurnsRemaining",
-                    "activeContextTokens",
-                    "autoCompactLimit",
-                    "lastTransition",
-                    "guards",
-                    "reasonCode"
-                ],
-                "additionalProperties": false
-            },
-            error_output_schema()
         ]
     })
 }
@@ -318,11 +212,9 @@ fn request_output_schema() -> Value {
             {
                 "type": "object",
                 "properties": {
-                    "status": {"const": "scheduled_after_turn"},
-                    "receiptId": {"type": "string"},
-                    "checkpointId": {"type": "string"}
+                    "status": {"const": "scheduled_after_turn"}
                 },
-                "required": ["status", "receiptId", "checkpointId"],
+                "required": ["status"],
                 "additionalProperties": false
             },
             error_output_schema()
@@ -337,32 +229,33 @@ fn error_output_schema() -> Value {
             "status": {"const": "rejected"},
             "reasonCode": {"type": "string"},
             "message": {"type": "string"},
-            "retryable": {"type": "boolean"}
+            "retryable": {"const": false}
         },
         "required": ["status", "reasonCode", "message", "retryable"],
         "additionalProperties": false
     })
 }
 
-fn tool_success(value: Value) -> Result<Value> {
-    Ok(json!({
-        "content": [{"type": "text", "text": serde_json::to_string(&value)?}],
-        "structuredContent": value,
+fn tool_scheduled(receipt_id: String) -> Value {
+    json!({
+        "content": [],
+        "structuredContent": {"status": "scheduled_after_turn"},
+        "_meta": {"agenticCompact": {"receiptId": receipt_id}},
         "isError": false
-    }))
+    })
 }
 
-fn tool_error(error: Error) -> Value {
+fn tool_rejected(code: ErrorCode, message: &'static str) -> Value {
     let value = json!({
         "status": "rejected",
-        "reasonCode": error.code.as_str(),
-        "message": error.to_string(),
-        "retryable": error.retryable
+        "reasonCode": code.as_str(),
+        "message": message,
+        "retryable": false
     });
     json!({
         "content": [{"type": "text", "text": value.to_string()}],
         "structuredContent": value,
-        "isError": true
+        "isError": !code.is_expected_rejection()
     })
 }
 
@@ -381,13 +274,19 @@ async fn write_response(stdout: &mut tokio::io::Stdout, value: Value) -> Result<
     Ok(())
 }
 
-fn rpc_error_code(code: ErrorCode) -> i64 {
-    match code {
-        ErrorCode::InvalidRequest | ErrorCode::InvalidMetadata | ErrorCode::MetadataMismatch => {
-            -32602
+fn rpc_error_envelope(id: Value, code: i64, message: &'static str) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "error": {
+            "code": code,
+            "message": message,
+            "data": {
+                "reasonCode": "invalid_request",
+                "retryable": false
+            }
         }
-        _ => -32000,
-    }
+    })
 }
 
 #[cfg(test)]
@@ -395,12 +294,70 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tool_list_is_bounded() {
+    fn tool_list_matches_the_single_tool_contract() {
         let value = tool_list();
-        assert_eq!(value["tools"].as_array().unwrap().len(), 2);
-        assert!(value.to_string().len() < 8_192);
-        for tool in value["tools"].as_array().unwrap() {
-            assert_eq!(tool["outputSchema"]["oneOf"][1], error_output_schema());
-        }
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 1);
+        assert!(serde_json::to_vec(tools).unwrap().len() <= 4_096);
+        assert_eq!(tools[0]["name"], "request_compaction");
+        assert_eq!(tools[0]["title"], "Request Agentic Context Compaction");
+        assert_eq!(tools[0]["description"], TOOL_DESCRIPTION);
+        assert_eq!(tools[0]["inputSchema"]["required"], json!(["next_action"]));
+        assert_eq!(tools[0]["outputSchema"]["oneOf"][1], error_output_schema());
+    }
+
+    #[test]
+    fn scheduled_result_hides_internal_ids_from_model_content() {
+        let result = tool_scheduled("rcpt_0123456789abcdef0123456789abcdef".to_owned());
+        assert_eq!(result["content"], json!([]));
+        assert_eq!(
+            result["structuredContent"],
+            json!({"status": "scheduled_after_turn"})
+        );
+        assert_eq!(
+            result["_meta"],
+            json!({
+                "agenticCompact": {
+                    "receiptId": "rcpt_0123456789abcdef0123456789abcdef"
+                }
+            })
+        );
+        assert_eq!(result["isError"], false);
+        assert!(!result.to_string().contains("checkpointId"));
+    }
+
+    #[test]
+    fn rejection_serializer_separates_expected_and_hard_failures() {
+        let expected = tool_rejected(
+            ErrorCode::SharedAppServerUnavailable,
+            ErrorCode::SharedAppServerUnavailable.model_message(),
+        );
+        assert_eq!(expected["isError"], false);
+        assert_eq!(expected["structuredContent"]["retryable"], false);
+        assert_eq!(
+            expected["structuredContent"]["message"],
+            ErrorCode::SharedAppServerUnavailable.model_message()
+        );
+
+        let hard = tool_rejected(
+            ErrorCode::InvalidRequest,
+            ErrorCode::InvalidRequest.model_message(),
+        );
+        assert_eq!(hard["isError"], true);
+        assert_eq!(
+            serde_json::from_str::<Value>(hard["content"][0]["text"].as_str().unwrap()).unwrap(),
+            hard["structuredContent"]
+        );
+    }
+
+    #[test]
+    fn rpc_errors_are_static_and_redacted() {
+        let error = rpc_error_envelope(Value::Null, -32700, INVALID_JSON_RPC_MESSAGE);
+        assert_eq!(error["error"]["message"], INVALID_JSON_RPC_MESSAGE);
+        assert_eq!(
+            error["error"]["data"],
+            json!({"reasonCode": "invalid_request", "retryable": false})
+        );
+        assert!(error["error"].get("component").is_none());
     }
 }

@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "initialize": {
+    "capabilities": {
+      "tools": {
+        "listChanged": false
+      }
+    },
+    "serverInfo": {
+      "name": "agentic-compact",
+      "title": "Agentic Compact"
+    },
+    "instructions": "Call request_compaction only after a phase has conclusively ended, substantial work remains, and no command, test, approval, file change, or subagent is active. If scheduled, end the turn immediately; if rejected, continue without retrying in that turn."
+  },
+  "tools": [
+    {
+      "name": "request_compaction",
+      "title": "Request Agentic Context Compaction",
+      "description": "At a settled phase boundary, schedule Codex-native same-thread compaction, inject bounded continuity state, and continue automatically. Do not call during investigation, editing, testing, uncertainty, or soon after another compaction. If scheduled, end this turn immediately.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "preserve": {
+            "type": "array",
+            "description": "Zero to four short facts the host cannot infer, ordered as: decisive conclusion or root cause; ruled-out route or invariant; interface or behavior constraint; unresolved risk or verification obligation.",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 96
+            },
+            "maxItems": 4
+          },
+          "next_action": {
+            "type": "string",
+            "description": "One concrete next step that remains valid after checking the current workspace.",
+            "minLength": 1,
+            "maxLength": 180
+          }
+        },
+        "required": [
+          "next_action"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "const": "scheduled_after_turn"
+              }
+            },
+            "required": [
+              "status"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "const": "rejected"
+              },
+              "reasonCode": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "retryable": {
+                "const": false
+              }
+            },
+            "required": [
+              "status",
+              "reasonCode",
+              "message",
+              "retryable"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  ],
+  "plugin": {
+    "defaultPrompt": [
+      "Use Agentic Compact only at a settled phase boundary with substantial work left and stale exploration; never call during investigation, editing, testing, uncertainty, or merely for context length."
+    ],
+    "skillPath": "plugins/agentic-compact/skills/agentic-compact/SKILL.md",
+    "skillSha256": "cbe96b910bf629bd71ae260c9f5e4397063e3784ee3100b45b2f369334c4530a"
+  },
+  "budgets": {
+    "toolCount": 1,
+    "normalizedToolsBytesMax": 4096,
+    "skillBytesMax": 2048,
+    "skillBodyWordsMax": 260,
+    "initializeWordsMax": 55,
+    "defaultPromptCount": 1,
+    "defaultPromptBytesMax": 200
+  }
+}

@@ -3,7 +3,7 @@ mod runner;
 
 use crate::app_server::AppServerClient;
 use crate::checkpoint::{CompactionIntent, Evidence};
-use crate::doctor::{load_capability_record, require_ready_capabilities};
+use crate::doctor::require_ready_capabilities;
 use crate::error::{Error, ErrorCode, Result};
 use crate::journal::{JournalStore, TransitionJournal, TransitionState};
 use crate::lease::ThreadLease;
@@ -11,9 +11,7 @@ use crate::metadata::BoundInvocation;
 use crate::observability::hash_identifier;
 use crate::protocol::{ResumeSnapshot, ThreadRef, completed_regular_turns_after};
 use dashmap::DashSet;
-use serde::Serialize;
 use std::collections::HashSet;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::{Instant, timeout, timeout_at};
@@ -49,10 +47,6 @@ impl TransitionRegistry {
             active: Arc::clone(&self.active),
         })
     }
-
-    pub fn is_active(&self, thread_id: &str) -> bool {
-        self.active.contains(thread_id)
-    }
 }
 
 pub(super) struct RegistryPermit {
@@ -72,43 +66,9 @@ pub struct Orchestrator {
     pub(super) journals: JournalStore,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone)]
 pub struct ScheduleResult {
-    pub status: &'static str,
     pub receipt_id: String,
-    pub checkpoint_id: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StatusResult {
-    pub version: &'static str,
-    pub mode: &'static str,
-    pub thread_id_bound: bool,
-    pub transition_pending: bool,
-    pub cooldown_turns_remaining: usize,
-    pub active_context_tokens: Option<i64>,
-    pub auto_compact_limit: Option<i64>,
-    pub last_transition: Option<LastTransitionStatus>,
-    pub guards: GuardStatus,
-    pub reason_code: Option<&'static str>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LastTransitionStatus {
-    pub checkpoint_id: String,
-    pub completed_regular_turns_ago: usize,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GuardStatus {
-    pub root_thread: bool,
-    pub no_active_descendants: bool,
-    pub shared_app_server: bool,
-    pub empty_continuation: bool,
 }
 
 impl Orchestrator {
@@ -116,99 +76,6 @@ impl Orchestrator {
         Ok(Self {
             registry: TransitionRegistry::default(),
             journals: JournalStore::open()?,
-        })
-    }
-
-    pub async fn status(&self, bound: &BoundInvocation) -> Result<StatusResult> {
-        let checked = timeout(Duration::from_secs(1), async {
-            let client = AppServerClient::connect_default().await?;
-            let result = self.status_with_client(bound, &client).await;
-            client.close().await;
-            result
-        })
-        .await;
-
-        match checked {
-            Ok(result) => result,
-            Err(_) => Ok(StatusResult::blocked(
-                ErrorCode::SharedAppServerUnavailable,
-                false,
-            )),
-        }
-    }
-
-    async fn status_with_client(
-        &self,
-        bound: &BoundInvocation,
-        client: &AppServerClient,
-    ) -> Result<StatusResult> {
-        let thread = client.thread_read(&bound.thread_id, true).await?;
-        let journal = self.journals.load(&bound.thread_id)?;
-        let capability_ready =
-            load_capability_record(Path::new(&client.initialize_result.codex_home))?
-                .is_some_and(|record| record.matches_client(client));
-        let no_active_descendants = !active_descendant_exists(client, &bound.thread_id).await?;
-        let transition_pending = self.registry.is_active(&bound.thread_id)
-            || journal
-                .as_ref()
-                .is_some_and(|journal| !journal.state.is_terminal());
-        let completed_regular_turns = journal
-            .as_ref()
-            .and_then(|journal| journal.continuation_turn_id.as_deref())
-            .and_then(|turn_id| completed_regular_turns_after(&thread, turn_id));
-        let cooldown_turns_remaining = journal
-            .as_ref()
-            .filter(|journal| journal.state == TransitionState::Cooldown)
-            .map(|_| {
-                COOLDOWN_REGULAR_TURNS.saturating_sub(completed_regular_turns.unwrap_or_default())
-            })
-            .unwrap_or_default();
-        let last_transition = journal.as_ref().and_then(|journal| {
-            (journal.state == TransitionState::Cooldown
-                && journal.checkpoint_sha256.is_some()
-                && journal.continuation_turn_id.is_some())
-            .then(|| LastTransitionStatus {
-                checkpoint_id: journal.checkpoint_id.clone(),
-                completed_regular_turns_ago: completed_regular_turns.unwrap_or_default(),
-            })
-        });
-        let root_thread = thread.parent_thread_id.is_none();
-        let reason_code = if !capability_ready {
-            Some(ErrorCode::UnsupportedCodex.as_str())
-        } else if !root_thread {
-            Some(ErrorCode::NotRootThread.as_str())
-        } else if !no_active_descendants {
-            Some(ErrorCode::ActiveSubagents.as_str())
-        } else if transition_pending {
-            Some(ErrorCode::TransitionPending.as_str())
-        } else if cooldown_turns_remaining > 0 {
-            Some(ErrorCode::CooldownActive.as_str())
-        } else {
-            None
-        };
-
-        Ok(StatusResult {
-            version: env!("CARGO_PKG_VERSION"),
-            mode: if !capability_ready {
-                "disabled"
-            } else if reason_code.is_none() {
-                "ready"
-            } else {
-                "blocked"
-            },
-            thread_id_bound: true,
-            transition_pending,
-            cooldown_turns_remaining,
-            active_context_tokens: None,
-            auto_compact_limit: None,
-            last_transition,
-            guards: GuardStatus {
-                root_thread,
-                no_active_descendants,
-                shared_app_server: true,
-                empty_continuation: capability_ready,
-            },
-            reason_code,
         })
     }
 
@@ -341,11 +208,7 @@ impl Orchestrator {
             transition_id_hash = %hash_identifier(&checkpoint_id),
             "agentic compaction scheduled"
         );
-        Ok(ScheduleResult {
-            status: "scheduled_after_turn",
-            receipt_id,
-            checkpoint_id,
-        })
+        Ok(ScheduleResult { receipt_id })
     }
 
     pub async fn recover_nonterminal_journals(&self) -> Result<usize> {
@@ -360,28 +223,6 @@ async fn close_rejected_preparation(client: &AppServerClient, thread_id: &str) {
     )
     .await;
     client.close().await;
-}
-
-impl StatusResult {
-    fn blocked(code: ErrorCode, thread_id_bound: bool) -> Self {
-        Self {
-            version: env!("CARGO_PKG_VERSION"),
-            mode: "blocked",
-            thread_id_bound,
-            transition_pending: false,
-            cooldown_turns_remaining: 0,
-            active_context_tokens: None,
-            auto_compact_limit: None,
-            last_transition: None,
-            guards: GuardStatus {
-                root_thread: false,
-                no_active_descendants: false,
-                shared_app_server: false,
-                empty_continuation: false,
-            },
-            reason_code: Some(code.as_str()),
-        }
-    }
 }
 
 pub(super) fn validate_resume_binding(

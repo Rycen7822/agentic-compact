@@ -1,21 +1,22 @@
 ---
 name: agentic-compact
-description: Trigger Codex-native same-thread context compaction at a stable semantic boundary, then resume from a bounded checkpoint. Use only for long-running work after active commands, tests, and subagents have finished.
+description: Schedule Codex-native same-thread compaction at a settled phase boundary, inject bounded continuity state, and continue automatically. Use only after active commands, tests, approvals, edits, and subagents have finished.
 ---
 
 # Agentic Compact
 
-Call `agentic_compact.status` before requesting a transition when readiness is uncertain.
-
 Call `agentic_compact.request_compaction` only when all of the following hold:
 
-- the current investigation or implementation stage has converged;
-- no important command, test, approval, or subagent is still active;
-- substantial earlier context is now redundant;
-- one concrete next action can resume the task.
+- the current phase has reached a stable conclusion;
+- earlier detail is less valuable than that conclusion;
+- substantial work remains to amortize the transition;
+- at most four preserve facts and one next action can hand off the work accurately;
+- no command, test, approval, file change, or subagent is active.
 
-Provide at most four short `preserve` invariants and one directly executable `next_action`.
+A valid boundary can be converged exploration before editing, a disproved route before a new route, implementation before broader verification, or completed verification before a new substantive repair or extension.
 
-After the tool returns `scheduled_after_turn`, finish the current turn immediately. Do not start another tool, mutate the plan, launch a subagent, or ask the user to run `/compact`.
+Do not call during root-cause investigation, conflicting evidence, editing, test waits, failure debugging, unstable goals or acceptance criteria, active work, or descendant-agent work. Do not call when only a short test, reply, or commit remains, soon after another compaction, or merely because context is long.
 
-Do not call the tool in short tasks, repeatedly within a few turns, or while evidence is still unsettled.
+Use `preserve` only for facts the host cannot infer, ordered as: decisive conclusion or root cause; ruled-out route or invariant; interface or behavior constraint; unresolved risk or verification obligation. Use `next_action` for one concrete step that remains valid after checking the workspace.
+
+If scheduled, end the turn immediately without starting another tool or subagent. If rejected, continue the task and do not retry in that turn.
