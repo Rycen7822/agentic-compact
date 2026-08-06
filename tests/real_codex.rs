@@ -1,32 +1,36 @@
 use agentic_compact::app_server::AppServerClient;
 use agentic_compact::error::ErrorCode;
+use agentic_compact::journal::TransitionState;
 use agentic_compact::protocol::{AppEvent, ResumeSnapshot};
-use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use serde_json::{Value, json};
+use std::path::Path;
 use std::time::Duration;
-use tempfile::TempDir;
-use tokio::process::{Child, Command};
-use tokio::time::{sleep, timeout};
+use tokio::process::Command;
+use tokio::time::timeout;
+use uuid::Uuid;
 
-struct AppServer {
-    _child: Child,
-    _home: TempDir,
-}
+#[path = "support/real_app_server.rs"]
+mod real_app_server;
+
+use real_app_server::{
+    RawAppServerClient, assert_process_alive, production_mcp_config, start_frozen_codex,
+    toml_string, wait_for_mcp_pid, wait_for_terminal_journal, write_ready_capability,
+};
 
 #[tokio::test]
 #[ignore = "requires frozen Codex and kills an isolated unauthenticated app-server"]
 async fn killed_real_app_server_fails_closed_without_a_retry() {
-    let (mut server, socket) = start_app_server(false).await;
+    let (mut server, socket) = start_frozen_codex(false, |_| String::new()).await;
     let client = AppServerClient::connect(&socket).await.unwrap();
     let mut events = client.subscribe();
-    let pid = server._child.id().unwrap().to_string();
+    let pid = server.child.id().unwrap().to_string();
     let status = Command::new("kill")
         .args(["-TERM", &pid])
         .status()
         .await
         .unwrap();
     assert!(status.success());
-    server._child.wait().await.unwrap();
+    server.child.wait().await.unwrap();
     timeout(Duration::from_secs(5), async {
         loop {
             if matches!(
@@ -50,7 +54,7 @@ async fn killed_real_app_server_fails_closed_without_a_retry() {
 #[tokio::test]
 #[ignore = "requires authenticated frozen Codex and starts a real empty turn"]
 async fn resumes_same_thread_100_times_without_mutating_settings() {
-    let (server, socket) = start_app_server(true).await;
+    let (server, socket) = start_frozen_codex(true, |_| String::new()).await;
     let owner = AppServerClient::connect(&socket).await.unwrap();
     let started = owner.start_thread(false).await.unwrap();
     assert_eq!(started.model.as_deref(), Some("gpt-5.6-luna"));
@@ -82,6 +86,165 @@ async fn resumes_same_thread_100_times_without_mutating_settings() {
     owner.delete_thread(&baseline.thread.id).await.unwrap();
     owner.close().await;
     drop(server);
+}
+
+#[tokio::test]
+#[ignore = "requires frozen Codex and exercises its direct MCP bridge"]
+async fn direct_mcp_metadata_contract_for_frozen_codex() {
+    let receipt = format!("rcpt_{}", Uuid::new_v4().simple());
+    let expected_receipt = receipt.clone();
+    let (server, socket) = start_frozen_codex(false, move |home| {
+        let script = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/support/phase0a_mcp_probe.py");
+        let log = home.join("phase8-direct-mcp.jsonl");
+        format!(
+            "\n[mcp_servers.phase0a_probe]\ncommand = \"python3\"\nargs = [{}]\nstartup_timeout_sec = 10\ntool_timeout_sec = 30\ndefault_tools_approval_mode = \"approve\"\n\n[mcp_servers.phase0a_probe.env]\nPHASE0A_PROBE_LOG = {}\nPHASE0A_RECEIPT = {}\n",
+            toml_string(&script),
+            toml_string(&log),
+            serde_json::to_string(&expected_receipt).unwrap(),
+        )
+    })
+    .await;
+    let owner = AppServerClient::connect(&socket).await.unwrap();
+    let thread = owner.start_thread(false).await.unwrap().thread.id;
+    let mut raw = RawAppServerClient::connect(&socket).await;
+    let result = raw
+        .request(
+            "mcpServer/tool/call",
+            json!({
+                "threadId": thread,
+                "server": "phase0a_probe",
+                "tool": "request_compaction",
+                "arguments": {"preserve": [], "next_action": "continue the direct probe"}
+            }),
+        )
+        .await;
+
+    assert_eq!(result["content"], json!([]));
+    assert_eq!(
+        result["structuredContent"],
+        json!({"status": "scheduled_after_turn"})
+    );
+    assert_eq!(result["_meta"]["agenticCompact"]["receiptId"], receipt);
+    owner.delete_thread(&thread).await.unwrap();
+    owner.close().await;
+    drop(server);
+}
+
+#[tokio::test]
+#[ignore = "requires authenticated frozen Codex and performs a production transition"]
+async fn completes_v02_transition_with_original_mcp_process() {
+    let (server, socket) = start_frozen_codex(true, production_mcp_config).await;
+    let state_root = server.home.path().join("state");
+    let app_server_pid = server.child.id().unwrap();
+    let owner = AppServerClient::connect(&socket).await.unwrap();
+    let started = owner.start_thread(false).await.unwrap();
+    assert_eq!(started.model.as_deref(), Some("gpt-5.6-luna"));
+    assert_eq!(started.reasoning_effort.as_deref(), Some("high"));
+    write_ready_capability(server.home.path(), &owner);
+    let thread_id = started.thread.id;
+    let mut events = owner.subscribe();
+    let mut raw = RawAppServerClient::connect(&socket).await;
+    let mcp_status = raw
+        .request(
+            "mcpServerStatus/list",
+            json!({"threadId": thread_id, "detail": "full"}),
+        )
+        .await;
+    assert_production_mcp_loaded(&mcp_status);
+    let original_pid = wait_for_mcp_pid(app_server_pid).await;
+    assert_process_alive(original_pid).await;
+    let source = raw
+        .request(
+            "turn/start",
+            json!({
+                "threadId": thread_id,
+                "input": [{
+                    "type": "text",
+                    "text": "This is an explicit Agentic Compact acceptance test at a settled phase boundary. Your only action in this turn is to call the request_compaction MCP tool exactly once with preserve set to [\"Phase 8 production transition\"] and next_action set to \"Reply exactly PHASE8_CONTINUED without calling a tool.\" Do not answer in prose. After the tool reports scheduled, end this turn immediately."
+                }]
+            }),
+        )
+        .await;
+    let source_turn_id = source["turn"]["id"].as_str().unwrap().to_owned();
+    wait_for_turn(&mut events, &thread_id, &source_turn_id).await;
+    let source_snapshot = raw
+        .request(
+            "thread/read",
+            json!({"threadId": thread_id, "includeTurns": true}),
+        )
+        .await;
+    assert_source_requested_compaction(&source_snapshot, &source_turn_id);
+    assert_process_alive(original_pid).await;
+
+    let journal = wait_for_terminal_journal(&state_root).await;
+    assert_eq!(journal.state, TransitionState::Cooldown, "{journal:?}");
+    assert_eq!(journal.thread_id, thread_id);
+    assert_eq!(journal.source_turn_id, source_turn_id);
+    let compact_turn_id = journal.compact_turn_id.as_deref().unwrap();
+    let continuation_turn_id = journal.continuation_turn_id.as_deref().unwrap();
+    wait_for_turn(&mut events, &thread_id, continuation_turn_id).await;
+    assert_eq!(wait_for_mcp_pid(app_server_pid).await, original_pid);
+    assert_process_alive(original_pid).await;
+
+    let snapshot = raw
+        .request(
+            "thread/read",
+            json!({"threadId": thread_id, "includeTurns": true}),
+        )
+        .await;
+    assert_real_transition_snapshot(
+        &snapshot,
+        &source_turn_id,
+        compact_turn_id,
+        continuation_turn_id,
+        &journal.receipt_id,
+    );
+    owner.unsubscribe(&thread_id).await.unwrap();
+    owner.delete_thread(&thread_id).await.unwrap();
+    owner.close().await;
+    drop(server);
+}
+
+fn assert_production_mcp_loaded(response: &Value) {
+    let servers = response["data"].as_array().unwrap();
+    let server = servers
+        .iter()
+        .find(|server| server["name"] == "agentic-compact")
+        .unwrap_or_else(|| panic!("production MCP is absent from status: {response}"));
+    assert!(
+        server["tools"].get("request_compaction").is_some(),
+        "production tool is absent from status: {server}"
+    );
+}
+
+fn assert_source_requested_compaction(response: &Value, source_id: &str) {
+    let thread = response.get("thread").unwrap_or(response);
+    let source = thread["turns"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|turn| turn["id"] == source_id)
+        .unwrap();
+    let items = source["items"].as_array().unwrap();
+    let calls = items
+        .iter()
+        .filter(|item| {
+            item["type"] == "mcpToolCall"
+                && item["server"] == "agentic-compact"
+                && item["tool"] == "request_compaction"
+        })
+        .collect::<Vec<_>>();
+    let item_types = items
+        .iter()
+        .map(|item| item["type"].as_str().unwrap_or("unknown"))
+        .collect::<Vec<_>>();
+    assert_eq!(calls.len(), 1, "source item types: {item_types:?}");
+    assert_eq!(
+        calls[0]["result"]["structuredContent"]["status"], "scheduled_after_turn",
+        "production MCP did not schedule: {}",
+        calls[0]
+    );
 }
 
 fn assert_snapshot_unchanged(baseline: &ResumeSnapshot, resumed: &ResumeSnapshot, attempt: usize) {
@@ -139,60 +302,82 @@ async fn wait_for_turn(
     .expect("empty persistence turn did not complete");
 }
 
-async fn start_app_server(authenticated: bool) -> (AppServer, PathBuf) {
-    let home = tempfile::tempdir().unwrap();
-    if authenticated {
-        seed_codex_home(home.path());
-    }
-    let socket = home.path().join("agentic-compact-real.sock");
-    let codex = std::env::var_os("AGENTIC_COMPACT_CODEX_BIN").unwrap_or_else(|| "codex".into());
-    let mut child = Command::new(codex)
-        .args([
-            "app-server",
-            "--listen",
-            &format!("unix://{}", socket.display()),
-        ])
-        .env("CODEX_HOME", home.path())
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .expect("start the frozen Codex app-server");
-
-    for _ in 0..100 {
-        if socket.exists() {
-            return (
-                AppServer {
-                    _child: child,
-                    _home: home,
-                },
-                socket,
-            );
-        }
-        if child.try_wait().unwrap().is_some() {
-            panic!("Codex app-server exited before creating its socket");
-        }
-        sleep(Duration::from_millis(50)).await;
-    }
-    panic!("Codex app-server did not create its socket within five seconds");
-}
-
-fn seed_codex_home(target: &Path) {
-    let source = std::env::var_os("AGENTIC_COMPACT_REAL_CODEX_HOME")
-        .or_else(|| std::env::var_os("CODEX_HOME"))
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".codex")))
-        .expect("set AGENTIC_COMPACT_REAL_CODEX_HOME to an authenticated Codex home");
-    let auth = source.join("auth.json");
-    assert!(
-        auth.is_file(),
-        "real Codex test requires auth.json in the selected Codex home"
+fn assert_real_transition_snapshot(
+    response: &Value,
+    source_id: &str,
+    compact_id: &str,
+    continuation_id: &str,
+    receipt_id: &str,
+) {
+    let thread = response.get("thread").unwrap_or(response);
+    let turns = thread["turns"].as_array().unwrap();
+    assert_eq!(
+        turns
+            .iter()
+            .map(|turn| turn["id"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        [source_id, compact_id, continuation_id]
     );
-    std::fs::copy(auth, target.join("auth.json")).unwrap();
-    std::fs::write(
-        target.join("config.toml"),
-        "model = \"gpt-5.6-luna\"\nmodel_reasoning_effort = \"high\"\n",
-    )
-    .unwrap();
+    assert!(turns.iter().all(|turn| turn["status"] == "completed"));
+
+    let source = &turns[0];
+    let calls = source["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|item| {
+            item["type"] == "mcpToolCall"
+                && item["server"] == "agentic-compact"
+                && item["tool"] == "request_compaction"
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0]["result"]["content"], json!([]));
+    assert_eq!(
+        calls[0]["result"]["structuredContent"],
+        json!({"status": "scheduled_after_turn"})
+    );
+    assert_eq!(
+        calls[0]["result"]["_meta"]["agenticCompact"]["receiptId"],
+        receipt_id
+    );
+    assert!(
+        calls[0]["result"].get("checkpointId").is_none(),
+        "checkpoint ID leaked into the tool result"
+    );
+
+    let compact_items = turns[1]["items"].as_array().unwrap();
+    assert_eq!(compact_items.len(), 1);
+    assert_eq!(compact_items[0]["type"], "contextCompaction");
+    let all_items = turns
+        .iter()
+        .flat_map(|turn| turn["items"].as_array().unwrap());
+    assert_eq!(
+        all_items
+            .clone()
+            .filter(|item| item["type"] == "contextCompaction")
+            .count(),
+        1
+    );
+    assert_eq!(
+        all_items
+            .clone()
+            .filter(|item| item["type"] == "userMessage")
+            .count(),
+        1
+    );
+    let continuation_text = turns[2]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["type"] == "agentMessage")
+        .and_then(|item| item["text"].as_str())
+        .unwrap();
+    assert_eq!(continuation_text.trim(), "PHASE8_CONTINUED");
+    assert!(
+        !response
+            .to_string()
+            .contains("A host-controlled agentic-compact transition has completed."),
+        "injected continuity wrapper leaked into the stable thread snapshot"
+    );
 }
