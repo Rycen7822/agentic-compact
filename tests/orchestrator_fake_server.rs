@@ -1,11 +1,15 @@
 #![cfg(unix)]
 
 use agentic_compact::checkpoint::CompactionIntent;
-use agentic_compact::journal::{JournalStore, TransitionState};
+use agentic_compact::error::Result;
+use agentic_compact::journal::{JournalStore, TransitionJournal, TransitionState};
 use agentic_compact::metadata::BoundInvocation;
-use agentic_compact::orchestrator::Orchestrator;
+use agentic_compact::observability::hash_identifier;
+use agentic_compact::orchestrator::{Orchestrator, ScheduleResult};
 use serde_json::{Value, json};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
+use tokio::task::JoinHandle;
 use tokio::time::{advance, pause, timeout};
 
 mod support;
@@ -24,6 +28,67 @@ async fn respond(server: &FakeServer, request: &Value, result: Value) {
         .await;
 }
 
+async fn acknowledge_unsubscribe(server: &mut FakeServer, thread_id: &str) {
+    let unsubscribe = request(server, "thread/unsubscribe").await;
+    assert_eq!(unsubscribe["params"]["threadId"], thread_id);
+    respond(server, &unsubscribe, json!({})).await;
+}
+
+fn journal_path(state_root: &Path, thread_id: &str) -> PathBuf {
+    state_root
+        .join("journals")
+        .join(format!("{}.json", hash_identifier(thread_id)))
+}
+
+fn persist_terminal_journal(
+    state_root: &Path,
+    thread_id: &str,
+    state: TransitionState,
+    continuation_turn_id: Option<&str>,
+) -> (PathBuf, Vec<u8>) {
+    let mut journal = TransitionJournal::new(
+        thread_id.to_owned(),
+        "prior-source".to_owned(),
+        "prior-receipt".to_owned(),
+        "prior-checkpoint".to_owned(),
+        CompactionIntent {
+            preserve: Vec::new(),
+            next_action: "prior continuation".to_owned(),
+        },
+    )
+    .unwrap();
+    journal.state = state;
+    journal.continuation_turn_id = continuation_turn_id.map(str::to_owned);
+    journal.reason_code =
+        (state == TransitionState::FailedSafe).then(|| "prior_terminal".to_owned());
+    let store = JournalStore::open().unwrap();
+    store.save(&journal).unwrap();
+    let path = journal_path(state_root, thread_id);
+    let bytes = std::fs::read(&path).unwrap();
+    (path, bytes)
+}
+
+fn schedule(thread_id: &str) -> JoinHandle<Result<ScheduleResult>> {
+    let orchestrator = Orchestrator::new().unwrap();
+    let thread_id = thread_id.to_owned();
+    tokio::spawn(async move {
+        orchestrator
+            .schedule(
+                BoundInvocation {
+                    thread_id,
+                    turn_id: "source".to_owned(),
+                    model: None,
+                    reasoning_effort: None,
+                },
+                CompactionIntent {
+                    preserve: Vec::new(),
+                    next_action: "continue".to_owned(),
+                },
+            )
+            .await
+    })
+}
+
 fn thread(id: &str, status: &str, turns: Value) -> Value {
     json!({
         "thread": {
@@ -35,11 +100,14 @@ fn thread(id: &str, status: &str, turns: Value) -> Value {
 }
 
 #[tokio::test]
-async fn exercises_happy_path_and_active_descendant_guard() {
+async fn exercises_schedule_acceptance_and_preflight_rejections() {
     completes_schedule_through_same_thread_cooldown(false).await;
     completes_schedule_through_same_thread_cooldown(true).await;
-    active_descendant_blocks_before_compaction().await;
-    scheduling_deadline_fails_closed().await;
+    cooldown_rejection_preserves_prior_journal_bytes().await;
+    repeated_cooldown_rejections_cannot_erase_continuation_anchor().await;
+    root_rejection_does_not_create_journal().await;
+    active_descendant_rejection_does_not_create_journal().await;
+    prepare_timeout_does_not_create_journal().await;
 }
 
 async fn completes_schedule_through_same_thread_cooldown(user_wins_after_injection: bool) {
@@ -89,6 +157,14 @@ async fn completes_schedule_through_same_thread_cooldown(user_wins_after_injecti
 
     let scheduled = scheduling.await.unwrap().unwrap();
     assert_eq!(scheduled.status, "scheduled_after_turn");
+    let accepted = JournalStore::open()
+        .unwrap()
+        .load("thread")
+        .unwrap()
+        .unwrap();
+    assert_eq!(accepted.state, TransitionState::AwaitSourceTurnCompleted);
+    assert_eq!(accepted.receipt_id, scheduled.receipt_id);
+    assert_eq!(accepted.checkpoint_id, scheduled.checkpoint_id);
 
     server
         .send(json!({
@@ -295,30 +371,110 @@ async fn completes_schedule_through_same_thread_cooldown(user_wins_after_injecti
     assert!(journal.reason_code.is_none());
 }
 
-async fn active_descendant_blocks_before_compaction() {
+async fn cooldown_rejection_preserves_prior_journal_bytes() {
+    cooldown_rejection_case(1).await;
+}
+
+async fn repeated_cooldown_rejections_cannot_erase_continuation_anchor() {
+    cooldown_rejection_case(2).await;
+}
+
+async fn cooldown_rejection_case(repetitions: usize) {
+    let state_directory = tempfile::tempdir().unwrap();
+    let state_root = state_directory.path().join("state");
+    let _state_root = EnvironmentGuard::set("AGENTIC_COMPACT_STATE_DIR", &state_root);
+    let (path, prior_bytes) = persist_terminal_journal(
+        &state_root,
+        "cooldown",
+        TransitionState::Cooldown,
+        Some("continuation"),
+    );
+
+    for _ in 0..repetitions {
+        let mut server = FakeServer::start().await;
+        let _codex_home = EnvironmentGuard::set("CODEX_HOME", server.codex_home());
+        write_ready_capability(server.codex_home());
+        let scheduling = schedule("cooldown");
+
+        server.initialize_connection().await;
+        let resume = request(&mut server, "thread/resume").await;
+        respond(
+            &server,
+            &resume,
+            thread(
+                "cooldown",
+                "active",
+                json!([
+                    {"id":"continuation","status":"completed","items":[]},
+                    {"id":"source","status":"inProgress","items":[]}
+                ]),
+            ),
+        )
+        .await;
+        acknowledge_unsubscribe(&mut server, "cooldown").await;
+        let error = scheduling.await.unwrap().unwrap_err();
+        assert_eq!(
+            error.code,
+            agentic_compact::error::ErrorCode::CooldownActive
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), prior_bytes);
+        assert_eq!(
+            JournalStore::open()
+                .unwrap()
+                .load("cooldown")
+                .unwrap()
+                .unwrap()
+                .continuation_turn_id
+                .as_deref(),
+            Some("continuation")
+        );
+    }
+}
+
+async fn root_rejection_does_not_create_journal() {
     let mut server = FakeServer::start().await;
     let state_root = server.codex_home().parent().unwrap().join("state");
     let _codex_home = EnvironmentGuard::set("CODEX_HOME", server.codex_home());
     let _state_root = EnvironmentGuard::set("AGENTIC_COMPACT_STATE_DIR", &state_root);
     write_ready_capability(server.codex_home());
 
-    let orchestrator = Orchestrator::new().unwrap();
-    let scheduling = tokio::spawn(async move {
-        orchestrator
-            .schedule(
-                BoundInvocation {
-                    thread_id: "root".to_owned(),
-                    turn_id: "source".to_owned(),
-                    model: None,
-                    reasoning_effort: None,
-                },
-                CompactionIntent {
-                    preserve: Vec::new(),
-                    next_action: "continue".to_owned(),
-                },
-            )
-            .await
-    });
+    let scheduling = schedule("child");
+
+    server.initialize_connection().await;
+    let resume = request(&mut server, "thread/resume").await;
+    respond(
+        &server,
+        &resume,
+        json!({"thread":{
+            "id":"child",
+            "parentThreadId":"root",
+            "status":{"type":"active"},
+            "turns":[{"id":"source","status":"inProgress","items":[]}]
+        }}),
+    )
+    .await;
+    acknowledge_unsubscribe(&mut server, "child").await;
+    let error = scheduling.await.unwrap().unwrap_err();
+    assert_eq!(error.code, agentic_compact::error::ErrorCode::NotRootThread);
+    assert!(
+        JournalStore::open()
+            .unwrap()
+            .load("child")
+            .unwrap()
+            .is_none()
+    );
+}
+
+async fn active_descendant_rejection_does_not_create_journal() {
+    let mut server = FakeServer::start().await;
+    let state_root = server.codex_home().parent().unwrap().join("state");
+    let _codex_home = EnvironmentGuard::set("CODEX_HOME", server.codex_home());
+    let _state_root = EnvironmentGuard::set("AGENTIC_COMPACT_STATE_DIR", &state_root);
+    write_ready_capability(server.codex_home());
+    let (prior_path, prior_bytes) =
+        persist_terminal_journal(&state_root, "root", TransitionState::FailedSafe, None);
+
+    let scheduling = schedule("root");
 
     server.initialize_connection().await;
     let resume = request(&mut server, "thread/resume").await;
@@ -352,41 +508,24 @@ async fn active_descendant_blocks_before_compaction() {
     )
     .await;
 
+    acknowledge_unsubscribe(&mut server, "root").await;
     let error = scheduling.await.unwrap().unwrap_err();
     assert_eq!(
         error.code,
         agentic_compact::error::ErrorCode::ActiveSubagents
     );
     assert!(server.try_next_request().is_none());
-    let journal = JournalStore::open().unwrap().load("root").unwrap().unwrap();
-    assert_eq!(journal.state, TransitionState::Cancelled);
-    assert_eq!(journal.reason_code.as_deref(), Some("active_subagents"));
+    assert_eq!(std::fs::read(prior_path).unwrap(), prior_bytes);
 }
 
-async fn scheduling_deadline_fails_closed() {
+async fn prepare_timeout_does_not_create_journal() {
     let mut server = FakeServer::start().await;
     let state_root = server.codex_home().parent().unwrap().join("state");
     let _codex_home = EnvironmentGuard::set("CODEX_HOME", server.codex_home());
     let _state_root = EnvironmentGuard::set("AGENTIC_COMPACT_STATE_DIR", &state_root);
     write_ready_capability(server.codex_home());
 
-    let orchestrator = Orchestrator::new().unwrap();
-    let scheduling = tokio::spawn(async move {
-        orchestrator
-            .schedule(
-                BoundInvocation {
-                    thread_id: "deadline".to_owned(),
-                    turn_id: "source".to_owned(),
-                    model: None,
-                    reasoning_effort: None,
-                },
-                CompactionIntent {
-                    preserve: Vec::new(),
-                    next_action: "continue".to_owned(),
-                },
-            )
-            .await
-    });
+    let scheduling = schedule("deadline");
     server.initialize_connection().await;
     let resume = request(&mut server, "thread/resume").await;
     assert_eq!(resume["params"]["threadId"], "deadline");
@@ -394,13 +533,17 @@ async fn scheduling_deadline_fails_closed() {
     advance(Duration::from_secs(6)).await;
     tokio::task::yield_now().await;
 
+    let unsubscribe = request(&mut server, "thread/unsubscribe").await;
+    assert_eq!(unsubscribe["params"]["threadId"], "deadline");
+    advance(Duration::from_secs(1)).await;
+    tokio::task::yield_now().await;
     let error = scheduling.await.unwrap().unwrap_err();
     assert_eq!(error.code, agentic_compact::error::ErrorCode::Timeout);
-    let journal = JournalStore::open()
-        .unwrap()
-        .load("deadline")
-        .unwrap()
-        .unwrap();
-    assert_eq!(journal.state, TransitionState::FailedSafe);
-    assert_eq!(journal.reason_code.as_deref(), Some("timeout"));
+    assert!(
+        JournalStore::open()
+            .unwrap()
+            .load("deadline")
+            .unwrap()
+            .is_none()
+    );
 }

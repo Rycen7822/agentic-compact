@@ -16,7 +16,7 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::time::timeout;
+use tokio::time::{Instant, timeout, timeout_at};
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -24,6 +24,7 @@ pub(super) const SOURCE_TURN_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 pub(super) const COMPACTION_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 pub(super) const CONTINUATION_START_TIMEOUT: Duration = Duration::from_secs(30);
 pub(super) const PREPARE_TIMEOUT: Duration = Duration::from_secs(5);
+const REJECTED_PREPARATION_CLEANUP_TIMEOUT: Duration = Duration::from_millis(250);
 pub(super) const COOLDOWN_REGULAR_TURNS: usize = 3;
 pub(super) const MCP_SERVER_NAMES: &[&str] = &["agentic-compact", "agentic_compact"];
 pub(super) const REQUEST_TOOL_NAMES: &[&str] =
@@ -230,43 +231,36 @@ impl Orchestrator {
             .component("orchestrator"));
         }
 
-        let receipt_id = format!("rcpt_{}", Uuid::new_v4().simple());
-        let checkpoint_id = format!("cp_{}", Uuid::new_v4().simple());
-        let mut journal = TransitionJournal::new(
-            bound.thread_id.clone(),
-            bound.turn_id.clone(),
-            receipt_id.clone(),
-            checkpoint_id.clone(),
-            intent,
-        )?;
-        self.journals.save(&journal)?;
-
-        let preparation = timeout(PREPARE_TIMEOUT, async {
-            let client = AppServerClient::connect_default().await?;
+        let deadline = Instant::now() + PREPARE_TIMEOUT;
+        let client = match timeout_at(deadline, AppServerClient::connect_default()).await {
+            Ok(Ok(client)) => client,
+            Ok(Err(error)) => return Err(error),
+            Err(_) => {
+                return Err(Error::timeout(
+                    "orchestrator",
+                    "same-thread attach exceeded the 5 second MCP scheduling deadline",
+                ));
+            }
+        };
+        let preparation = timeout_at(deadline, async {
             require_ready_capabilities(&client)?;
             let events = client.subscribe();
             let snapshot = client.thread_resume(&bound.thread_id).await?;
             validate_resume_binding(&bound, &snapshot)?;
             preflight_root_and_cooldown(&snapshot.thread, prior.as_ref())?;
             ensure_no_active_descendant(&client, &bound.thread_id).await?;
-            Ok::<_, Error>((client, events, snapshot))
+            Ok::<_, Error>((events, snapshot))
         })
         .await;
 
-        let (client, events, snapshot) = match preparation {
+        let (events, snapshot) = match preparation {
             Ok(Ok(prepared)) => prepared,
             Ok(Err(error)) => {
-                if runner::is_cancellation_error(error.code) {
-                    journal.cancel(error.code.as_str());
-                } else {
-                    journal.fail(error.code.as_str());
-                }
-                self.journals.save(&journal)?;
+                close_rejected_preparation(&client, &bound.thread_id).await;
                 return Err(error);
             }
             Err(_) => {
-                journal.fail(ErrorCode::Timeout.as_str());
-                self.journals.save(&journal)?;
+                close_rejected_preparation(&client, &bound.thread_id).await;
                 return Err(Error::timeout(
                     "orchestrator",
                     "same-thread attach exceeded the 5 second MCP scheduling deadline",
@@ -274,11 +268,31 @@ impl Orchestrator {
             }
         };
 
-        journal.transition(
-            TransitionState::AwaitSourceTurnCompleted,
-            "same-thread subscription and resume acknowledged",
-        )?;
-        self.journals.save(&journal)?;
+        let receipt_id = format!("rcpt_{}", Uuid::new_v4().simple());
+        let checkpoint_id = format!("cp_{}", Uuid::new_v4().simple());
+        let accepted = (|| {
+            let mut journal = TransitionJournal::new(
+                bound.thread_id.clone(),
+                bound.turn_id.clone(),
+                receipt_id.clone(),
+                checkpoint_id.clone(),
+                intent,
+            )?;
+            self.journals.save(&journal)?;
+            journal.transition(
+                TransitionState::AwaitSourceTurnCompleted,
+                "same-thread subscription and resume acknowledged",
+            )?;
+            self.journals.save(&journal)?;
+            Ok::<_, Error>(journal)
+        })();
+        let mut journal = match accepted {
+            Ok(journal) => journal,
+            Err(error) => {
+                close_rejected_preparation(&client, &bound.thread_id).await;
+                return Err(error);
+            }
+        };
 
         let journals = self.journals.clone();
         let task_bound = bound.clone();
@@ -337,6 +351,15 @@ impl Orchestrator {
     pub async fn recover_nonterminal_journals(&self) -> Result<usize> {
         recovery::recover_nonterminal_journals(self).await
     }
+}
+
+async fn close_rejected_preparation(client: &AppServerClient, thread_id: &str) {
+    let _ = timeout(
+        REJECTED_PREPARATION_CLEANUP_TIMEOUT,
+        client.unsubscribe(thread_id),
+    )
+    .await;
+    client.close().await;
 }
 
 impl StatusResult {
