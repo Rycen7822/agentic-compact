@@ -47,12 +47,29 @@ fn rejects_illegal_fields_and_oversized_utf8() {
         .is_err()
     );
     let error = CompactionIntent {
-        preserve: vec!["😀".repeat(MAX_PRESERVE_SCALARS); MAX_PRESERVE_ITEMS],
+        preserve: (0..MAX_PRESERVE_ITEMS)
+            .map(|index| format!("{}{index}", "😀".repeat(MAX_PRESERVE_SCALARS - 1)))
+            .collect(),
         next_action: "continue".to_owned(),
     }
     .validate()
     .unwrap_err();
     assert_eq!(error.code, ErrorCode::CheckpointTooLarge);
+}
+
+#[test]
+fn preserve_normalizes_then_deduplicates_exact_values() {
+    let validated = CompactionIntent {
+        preserve: vec![
+            " keep invariant ".to_owned(),
+            "keep invariant".to_owned(),
+            "Keep invariant".to_owned(),
+        ],
+        next_action: "continue".to_owned(),
+    }
+    .validate()
+    .unwrap();
+    assert_eq!(validated.preserve, vec!["keep invariant", "Keep invariant"]);
 }
 
 #[test]
@@ -115,7 +132,7 @@ fn injection_items_match_frozen_wire_fixtures() {
 fn trims_evidence_in_priority_order_to_fit_capsule() {
     let evidence = Evidence {
         last_user_objective: Some("objective ".repeat(64)),
-        changed_files: (0..MAX_CHANGED_FILES)
+        window_changed_files: (0..MAX_CHANGED_FILES)
             .map(|index| format!("src/{index:02}-{}.rs", "x".repeat(MAX_CHANGED_PATH_SCALARS)))
             .collect(),
         verification: (0..MAX_VERIFICATION_ITEMS)
@@ -141,7 +158,7 @@ fn trims_evidence_in_priority_order_to_fit_capsule() {
 
     assert!(serde_json::to_vec(&checkpoint).unwrap().len() <= MAX_CHECKPOINT_BYTES);
     assert!(checkpoint.evidence.verification.is_empty());
-    assert!(checkpoint.evidence.changed_files.len() < MAX_CHANGED_FILES);
+    assert!(checkpoint.evidence.window_changed_files.len() < MAX_CHANGED_FILES);
     assert_eq!(checkpoint.model.next_action, "continue");
     checkpoint.verify().unwrap();
 }
@@ -158,7 +175,57 @@ fn omits_sensitive_projected_evidence() {
         "path": "secret=abcdefghijklmnopqrstuvwxyz"
     }));
     assert!(evidence.last_user_objective.is_none());
-    assert!(evidence.changed_files.is_empty());
+    assert!(evidence.window_changed_files.is_empty());
+
+    evidence.observe_item(&json!({
+        "kind": "user_objective",
+        "text": format!("{} api_key=abcdefghijklmnopqrstuvwxyz", "safe ".repeat(200))
+    }));
+    evidence.observe_item(&json!({
+        "kind": "changed_file",
+        "path": format!("{} secret=abcdefghijklmnopqrstuvwxyz", "path/".repeat(100))
+    }));
+    assert!(evidence.last_user_objective.is_none());
+    assert!(evidence.window_changed_files.is_empty());
+}
+
+#[test]
+fn evidence_serializes_window_scope_and_keeps_latest_fixed_verification() {
+    let mut evidence = Evidence {
+        last_user_objective: None,
+        window_changed_files: vec!["src/lib.rs".to_owned()],
+        verification: vec![
+            VerificationEvidence {
+                item_id: "same".to_owned(),
+                kind: "test".to_owned(),
+                label: "cargo test".to_owned(),
+                status: "completed".to_owned(),
+                exit_code: Some(0),
+            },
+            VerificationEvidence {
+                item_id: "same".to_owned(),
+                kind: "check".to_owned(),
+                label: "cargo check".to_owned(),
+                status: "failed".to_owned(),
+                exit_code: Some(1),
+            },
+            VerificationEvidence {
+                item_id: "raw".to_owned(),
+                kind: "test".to_owned(),
+                label: "cargo test --token=must-not-survive".to_owned(),
+                status: "completed".to_owned(),
+                exit_code: Some(0),
+            },
+        ],
+    };
+    evidence.normalize();
+    assert_eq!(evidence.verification.len(), 1);
+    assert_eq!(evidence.verification[0].kind, "check");
+    assert_eq!(evidence.verification[0].status, "failed");
+    let encoded = serde_json::to_value(&evidence).unwrap();
+    assert_eq!(encoded["windowChangedFiles"], json!(["src/lib.rs"]));
+    assert!(encoded.get("changedFiles").is_none());
+    assert!(!encoded.to_string().contains("must-not-survive"));
 }
 
 proptest! {

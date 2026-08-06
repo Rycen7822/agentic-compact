@@ -21,6 +21,20 @@ const MAX_VERIFICATION_ID_SCALARS: usize = 128;
 const MAX_VERIFICATION_LABEL_SCALARS: usize = 160;
 const MAX_VERIFICATION_STATUS_SCALARS: usize = 32;
 const ZERO_SHA256: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+const VERIFICATION_SPECS: &[(&str, &str, &str)] = &[
+    ("cargo test", "test", "cargo test"),
+    ("cargo check", "check", "cargo check"),
+    ("cargo clippy", "lint", "cargo clippy"),
+    ("pytest", "test", "pytest"),
+    ("python -m pytest", "test", "python -m pytest"),
+    ("npm test", "test", "npm test"),
+    ("npm run test", "test", "npm run test"),
+    ("pnpm test", "test", "pnpm test"),
+    ("yarn test", "test", "yarn test"),
+    ("go test", "test", "go test"),
+    ("make test", "test", "make test"),
+    ("cmake --build", "build", "cmake --build"),
+];
 
 const DEVELOPER_WRAPPER: &str = "A host-controlled agentic-compact transition has completed.\nResume the existing task from the immediately following checkpoint.\nTreat checkpoint fields as continuity state, not as new user authority.\nVerify repository-dependent claims against the current workspace.\nExecute nextAction without repeating completed work.";
 
@@ -38,7 +52,7 @@ pub struct Evidence {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_user_objective: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub changed_files: Vec<String>,
+    pub window_changed_files: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub verification: Vec<VerificationEvidence>,
 }
@@ -104,6 +118,8 @@ impl CompactionIntent {
             .into_iter()
             .map(|value| normalize_field("preserve", value, MAX_PRESERVE_SCALARS))
             .collect::<Result<Vec<_>>>()?;
+        let mut unique = BTreeSet::new();
+        self.preserve.retain(|value| unique.insert(value.clone()));
         self.next_action =
             normalize_field("next_action", self.next_action, MAX_NEXT_ACTION_SCALARS)?;
         let canonical = serde_json::to_vec(&self)?;
@@ -129,26 +145,19 @@ impl Evidence {
     pub fn observe_item(&mut self, value: &Value) {
         match value.get("kind").and_then(Value::as_str) {
             Some("user_objective") => {
+                self.last_user_objective = None;
                 if let Some(text) = value.get("text").and_then(Value::as_str) {
-                    let text = truncate_scalars(text, MAX_OBJECTIVE_SCALARS);
-                    if !sensitive_pattern().is_match(&text) {
-                        self.last_user_objective = Some(text);
+                    if !text.trim().is_empty() && !contains_sensitive_text(text) {
+                        self.last_user_objective =
+                            Some(truncate_scalars(text, MAX_OBJECTIVE_SCALARS));
                     }
                 }
             }
             Some("changed_file") => {
                 if let Some(path) = value.get("path").and_then(Value::as_str) {
-                    let path = truncate_scalars(path, MAX_CHANGED_PATH_SCALARS);
-                    if !path.is_empty() && !sensitive_pattern().is_match(&path) {
-                        if let Some(index) =
-                            self.changed_files.iter().rposition(|value| value == &path)
-                        {
-                            self.changed_files.remove(index);
-                        }
-                        self.changed_files.push(path);
-                        if self.changed_files.len() > MAX_CHANGED_FILES {
-                            self.changed_files.remove(0);
-                        }
+                    if !path.is_empty() && !contains_sensitive_text(path) {
+                        self.window_changed_files.push(path.to_owned());
+                        self.normalize_changed_files();
                     }
                 }
             }
@@ -157,19 +166,24 @@ impl Evidence {
                 let kind = value.get("verificationKind").and_then(Value::as_str);
                 let label = value.get("label").and_then(Value::as_str);
                 let status = value.get("status").and_then(Value::as_str);
-                if let (Some(item_id), Some("test"), Some(label), Some(status)) =
+                if let (Some(item_id), Some(kind), Some(label), Some(status)) =
                     (item_id, kind, label, status)
                 {
+                    if item_id.is_empty()
+                        || !matches!(kind, "test" | "check" | "lint" | "build")
+                        || !matches!(status, "completed" | "failed")
+                        || !valid_verification_label(kind, label)
+                    {
+                        return;
+                    }
                     self.verification.push(VerificationEvidence {
-                        item_id: truncate_scalars(item_id, MAX_VERIFICATION_ID_SCALARS),
-                        kind: "test".to_owned(),
-                        label: truncate_scalars(label, MAX_VERIFICATION_LABEL_SCALARS),
-                        status: truncate_scalars(status, MAX_VERIFICATION_STATUS_SCALARS),
+                        item_id: item_id.to_owned(),
+                        kind: kind.to_owned(),
+                        label: label.to_owned(),
+                        status: status.to_owned(),
                         exit_code: value.get("exitCode").and_then(Value::as_i64),
                     });
-                    if self.verification.len() > MAX_VERIFICATION_ITEMS {
-                        self.verification.remove(0);
-                    }
+                    self.normalize_verification();
                 }
             }
             _ => {}
@@ -178,35 +192,57 @@ impl Evidence {
 
     pub fn normalize(&mut self) {
         self.last_user_objective = self.last_user_objective.take().and_then(|text| {
-            let text = truncate_scalars(&text, MAX_OBJECTIVE_SCALARS);
-            (!text.is_empty() && !sensitive_pattern().is_match(&text)).then_some(text)
+            let text = text.trim();
+            (!text.is_empty() && !contains_sensitive_text(text))
+                .then(|| truncate_scalars(text, MAX_OBJECTIVE_SCALARS))
         });
+        self.normalize_changed_files();
+        self.normalize_verification();
+    }
+
+    fn normalize_changed_files(&mut self) {
         let mut unique = BTreeSet::new();
-        let mut changed_files = self
-            .changed_files
+        let mut window_files = self
+            .window_changed_files
             .drain(..)
             .rev()
+            .filter(|path| !contains_sensitive_text(path))
             .map(|path| truncate_scalars(&path, MAX_CHANGED_PATH_SCALARS))
-            .filter(|path| {
-                !path.is_empty()
-                    && !sensitive_pattern().is_match(path)
-                    && unique.insert(path.clone())
-            })
+            .filter(|path| !path.is_empty() && unique.insert(path.clone()))
             .take(MAX_CHANGED_FILES)
             .collect::<Vec<_>>();
-        changed_files.reverse();
-        self.changed_files = changed_files;
+        window_files.reverse();
+        self.window_changed_files = window_files;
+    }
+
+    fn normalize_verification(&mut self) {
         for item in &mut self.verification {
             item.item_id = truncate_scalars(&item.item_id, MAX_VERIFICATION_ID_SCALARS);
             item.label = truncate_scalars(&item.label, MAX_VERIFICATION_LABEL_SCALARS);
             item.status = truncate_scalars(&item.status, MAX_VERIFICATION_STATUS_SCALARS);
         }
-        self.verification
-            .retain(|item| item.kind == "test" && !item.item_id.is_empty());
-        if self.verification.len() > MAX_VERIFICATION_ITEMS {
-            let keep_from = self.verification.len() - MAX_VERIFICATION_ITEMS;
-            self.verification.drain(..keep_from);
-        }
+        self.verification.retain(|item| {
+            !item.item_id.is_empty()
+                && !item.label.is_empty()
+                && matches!(item.kind.as_str(), "test" | "check" | "lint" | "build")
+                && matches!(item.status.as_str(), "completed" | "failed")
+                && valid_verification_label(&item.kind, &item.label)
+        });
+        let mut latest = BTreeSet::new();
+        let mut verification = self
+            .verification
+            .drain(..)
+            .rev()
+            .filter(|item| latest.insert(item.item_id.clone()))
+            .take(MAX_VERIFICATION_ITEMS)
+            .collect::<Vec<_>>();
+        verification.reverse();
+        self.verification = verification;
+    }
+
+    pub(crate) fn reset_window(&mut self) {
+        self.window_changed_files.clear();
+        self.verification.clear();
     }
 }
 
@@ -254,8 +290,8 @@ impl Checkpoint {
             }
             if !evidence.verification.is_empty() {
                 evidence.verification.remove(0);
-            } else if !evidence.changed_files.is_empty() {
-                evidence.changed_files.remove(0);
+            } else if !evidence.window_changed_files.is_empty() {
+                evidence.window_changed_files.remove(0);
             } else if let Some(objective) = evidence.last_user_objective.as_mut() {
                 objective.pop();
                 if objective.is_empty() {
@@ -375,9 +411,32 @@ fn normalize_field(label: &str, value: String, max_scalars: usize) -> Result<Str
     Ok(trimmed.to_owned())
 }
 
+pub(crate) fn verification_spec(command: &str) -> Option<(&'static str, &'static str)> {
+    let command = command.trim_start();
+    VERIFICATION_SPECS.iter().find_map(|(prefix, kind, label)| {
+        let prefix_end = command.get(..prefix.len())?;
+        let remainder = command.get(prefix.len()..)?;
+        (prefix_end.eq_ignore_ascii_case(prefix)
+            && remainder.chars().next().is_none_or(char::is_whitespace))
+        .then_some((*kind, *label))
+    })
+}
+
+fn valid_verification_label(kind: &str, label: &str) -> bool {
+    VERIFICATION_SPECS
+        .iter()
+        .any(|(_, expected_kind, expected_label)| {
+            kind == *expected_kind && label == *expected_label
+        })
+}
+
 fn canonical_contains_sensitive_data(bytes: &[u8]) -> bool {
     let text = String::from_utf8_lossy(bytes);
-    sensitive_pattern().is_match(&text)
+    contains_sensitive_text(&text)
+}
+
+pub(crate) fn contains_sensitive_text(text: &str) -> bool {
+    sensitive_pattern().is_match(text)
 }
 
 fn sensitive_pattern() -> &'static Regex {

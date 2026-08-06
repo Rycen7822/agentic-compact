@@ -1,3 +1,4 @@
+use crate::checkpoint::{Evidence, contains_sensitive_text, verification_spec};
 use crate::error::{Error, ErrorCode, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -96,11 +97,6 @@ pub enum AppEvent {
     ThreadStatusChanged {
         thread_id: String,
         status: String,
-    },
-    TokenUsageUpdated {
-        thread_id: String,
-        turn_id: String,
-        active_context_tokens: Option<i64>,
     },
     ServerRequest {
         method: String,
@@ -441,11 +437,6 @@ pub fn parse_notification(message: &Value) -> Result<AppEvent> {
             thread_id: required_path_string(params, "/threadId", "threadId")?,
             status: parse_thread_status(params.get("status"))?,
         }),
-        "thread/tokenUsage/updated" => Ok(AppEvent::TokenUsageUpdated {
-            thread_id: required_path_string(params, "/threadId", "threadId")?,
-            turn_id: required_path_string(params, "/turnId", "turnId")?,
-            active_context_tokens: token_usage_total(params.get("tokenUsage")),
-        }),
         _ => Ok(AppEvent::UnknownNotification {
             method: method.to_owned(),
         }),
@@ -460,14 +451,39 @@ pub fn completed_regular_turns_after(thread: &ThreadRef, turn_id: &str) -> Resul
         .count())
 }
 
+pub fn project_current_window_evidence(
+    thread: &ThreadRef,
+    source_turn_id: &str,
+) -> Result<Evidence> {
+    let mut evidence = Evidence::default();
+    for (turn_index, _, item) in thread.ordered_items_through_turn(source_turn_id)? {
+        if thread.turns[turn_index].status == "completed" && item.item_type == "contextCompaction" {
+            evidence.reset_window();
+            continue;
+        }
+        for value in &item.safe_evidence {
+            evidence.observe_item(value);
+        }
+    }
+    evidence.normalize();
+    Ok(evidence)
+}
+
 fn project_safe_evidence(item_type: &str, object: &serde_json::Map<String, Value>) -> Vec<Value> {
     match item_type {
         "userMessage" => {
             let text = bounded_user_text(object.get("content"));
-            (!text.trim().is_empty())
-                .then(|| json!({"kind": "user_objective", "text": text}))
+            let sensitive = object
+                .get("content")
+                .and_then(Value::as_array)
                 .into_iter()
-                .collect()
+                .flatten()
+                .filter_map(|entry| entry.get("text").and_then(Value::as_str))
+                .any(contains_sensitive_text);
+            vec![json!({
+                "kind": "user_objective",
+                "text": (!sensitive && !text.trim().is_empty()).then_some(text)
+            })]
         }
         "fileChange" if object.get("status").and_then(Value::as_str) == Some("completed") => {
             let mut paths = object
@@ -477,6 +493,7 @@ fn project_safe_evidence(item_type: &str, object: &serde_json::Map<String, Value
                 .flatten()
                 .rev()
                 .filter_map(|change| change.get("path").and_then(Value::as_str))
+                .filter(|path| !contains_sensitive_text(path))
                 .take(MAX_PROJECTED_CHANGED_FILES)
                 .map(|path| {
                     json!({
@@ -491,18 +508,20 @@ fn project_safe_evidence(item_type: &str, object: &serde_json::Map<String, Value
         "commandExecution" => {
             let command = object.get("command").and_then(Value::as_str);
             let status = object.get("status").and_then(Value::as_str);
-            match (command.and_then(verification_label), status) {
-                (Some(label), Some(status)) => vec![json!({
-                    "kind": "verification",
-                    "itemId": truncate_scalars(
-                        object.get("id").and_then(Value::as_str).unwrap_or(""),
-                        MAX_PROJECTED_ITEM_ID_SCALARS,
-                    ),
-                    "verificationKind": "test",
-                    "label": label,
-                    "status": truncate_scalars(status, MAX_PROJECTED_STATUS_SCALARS),
-                    "exitCode": object.get("exitCode").and_then(Value::as_i64)
-                })],
+            let item_id = object.get("id").and_then(Value::as_str);
+            match (command.and_then(verification_spec), status, item_id) {
+                (Some((kind, label)), Some(status @ ("completed" | "failed")), Some(item_id))
+                    if !item_id.is_empty() =>
+                {
+                    vec![json!({
+                        "kind": "verification",
+                        "itemId": truncate_scalars(item_id, MAX_PROJECTED_ITEM_ID_SCALARS),
+                        "verificationKind": kind,
+                        "label": label,
+                        "status": truncate_scalars(status, MAX_PROJECTED_STATUS_SCALARS),
+                        "exitCode": object.get("exitCode").and_then(Value::as_i64)
+                    })]
+                }
                 _ => Vec::new(),
             }
         }
@@ -532,32 +551,6 @@ fn bounded_user_text(content: Option<&Value>) -> String {
         output.push_str(&projected);
     }
     output
-}
-
-fn verification_label(command: &str) -> Option<&'static str> {
-    let command = command.trim_start();
-    [
-        ("cargo test", "cargo test"),
-        ("cargo check", "cargo check"),
-        ("cargo clippy", "cargo clippy"),
-        ("pytest", "pytest"),
-        ("python -m pytest", "python -m pytest"),
-        ("npm test", "npm test"),
-        ("npm run test", "npm run test"),
-        ("pnpm test", "pnpm test"),
-        ("yarn test", "yarn test"),
-        ("go test", "go test"),
-        ("make test", "make test"),
-        ("cmake --build", "cmake --build"),
-    ]
-    .iter()
-    .find_map(|(prefix, label)| {
-        let prefix_end = command.get(..prefix.len())?;
-        let remainder = command.get(prefix.len()..)?;
-        (prefix_end.eq_ignore_ascii_case(prefix)
-            && remainder.chars().next().is_none_or(char::is_whitespace))
-        .then_some(*label)
-    })
 }
 
 fn is_request_compaction_call(item_type: &str, server: Option<&str>, tool: Option<&str>) -> bool {
@@ -642,21 +635,42 @@ fn parse_thread_status(value: Option<&Value>) -> Result<String> {
     }
 }
 
-fn token_usage_total(value: Option<&Value>) -> Option<i64> {
-    let value = value?;
-    [
-        "/total/totalTokens",
-        "/totalTokens",
-        "/last/totalTokens",
-        "/activeContextTokens",
-    ]
-    .iter()
-    .find_map(|pointer| value.pointer(pointer).and_then(Value::as_i64))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn evidence(turns: Vec<Value>, source_turn_id: &str) -> Evidence {
+        let thread = ThreadRef::from_response(
+            &json!({"thread": {"id": "thread", "status": "idle", "turns": turns}}),
+            true,
+        )
+        .unwrap();
+        project_current_window_evidence(&thread, source_turn_id).unwrap()
+    }
+
+    fn changed_file(id: &str, path: &str) -> Value {
+        json!({
+            "id": id,
+            "type": "fileChange",
+            "status": "completed",
+            "changes": [{"path": path}]
+        })
+    }
+
+    fn command(id: &str, command: &str, status: &str, exit_code: i64) -> Value {
+        json!({
+            "id": id,
+            "type": "commandExecution",
+            "command": command,
+            "status": status,
+            "exitCode": exit_code,
+            "aggregatedOutput": "raw output must not survive"
+        })
+    }
+
+    fn user_message(id: &str, content: Value) -> Value {
+        json!({"id": id, "type": "userMessage", "content": content})
+    }
 
     #[test]
     fn parses_loaded_thread_string_page() {
@@ -806,6 +820,185 @@ mod tests {
                 ErrorCode::Protocol
             );
         }
+    }
+
+    #[test]
+    fn evidence_uses_the_last_completed_compaction_item_position() {
+        let projected = evidence(
+            vec![
+                json!({
+                    "id": "history",
+                    "status": "completed",
+                    "items": [
+                        user_message("objective", json!([{"type": "text", "text": "ship v0.2"}])),
+                        changed_file("pre", "src/pre.rs"),
+                        command("verify", "cargo test --workspace", "completed", 0),
+                        json!({"id": "compact-one", "type": "contextCompaction"}),
+                        changed_file("middle", "src/middle.rs"),
+                        command("verify", "cargo check", "completed", 0),
+                        json!({"id": "compact-two", "type": "contextCompaction"}),
+                        changed_file("after", "src/after.rs"),
+                        command("verify", "cargo check", "completed", 0)
+                    ]
+                }),
+                json!({
+                    "id": "source",
+                    "status": "completed",
+                    "items": [
+                        changed_file("source-file", "src/source.rs"),
+                        command("verify", "cargo clippy --all-targets", "failed", 1)
+                    ]
+                }),
+            ],
+            "source",
+        );
+
+        assert_eq!(projected.last_user_objective.as_deref(), Some("ship v0.2"));
+        assert_eq!(
+            projected.window_changed_files,
+            vec!["src/after.rs", "src/source.rs"]
+        );
+        assert_eq!(projected.verification.len(), 1);
+        assert_eq!(projected.verification[0].item_id, "verify");
+        assert_eq!(projected.verification[0].kind, "lint");
+        assert_eq!(projected.verification[0].status, "failed");
+        assert_eq!(projected.verification[0].exit_code, Some(1));
+    }
+
+    #[test]
+    fn every_later_user_message_invalidates_the_previous_objective() {
+        let stale = user_message(
+            "old",
+            json!([{"type": "text", "text": "keep the old objective"}]),
+        );
+        for latest in [
+            user_message("empty", json!([])),
+            user_message(
+                "sensitive",
+                json!([{
+                    "type": "text",
+                    "text": "Authorization: Bearer abcdefghijklmnopqrstuvwxyz"
+                }]),
+            ),
+            user_message("image", json!([{"type": "image", "url": "ignored"}])),
+            user_message("nontext", json!([{"type": "text", "text": 7}])),
+        ] {
+            let projected = evidence(
+                vec![json!({
+                    "id": "source",
+                    "status": "completed",
+                    "items": [stale.clone(), latest]
+                })],
+                "source",
+            );
+            assert!(projected.last_user_objective.is_none());
+        }
+
+        let projected = evidence(
+            vec![json!({
+                "id": "source",
+                "status": "completed",
+                "items": [
+                    stale,
+                    user_message("new", json!([{"type": "text", "text": "new objective"}]))
+                ]
+            })],
+            "source",
+        );
+        assert_eq!(
+            projected.last_user_objective.as_deref(),
+            Some("new objective")
+        );
+    }
+
+    #[test]
+    fn verification_allowlist_has_fixed_kinds_and_prefix_boundaries() {
+        for (command, expected) in [
+            ("cargo test --workspace", ("test", "cargo test")),
+            ("cargo check", ("check", "cargo check")),
+            ("cargo clippy --all-targets", ("lint", "cargo clippy")),
+            ("pytest -q", ("test", "pytest")),
+            ("python -m pytest tests", ("test", "python -m pytest")),
+            ("npm test", ("test", "npm test")),
+            ("npm run test -- --run", ("test", "npm run test")),
+            ("pnpm test", ("test", "pnpm test")),
+            ("yarn test", ("test", "yarn test")),
+            ("go test ./...", ("test", "go test")),
+            ("make test", ("test", "make test")),
+            ("cmake --build build", ("build", "cmake --build")),
+        ] {
+            assert_eq!(verification_spec(command), Some(expected));
+        }
+        for command in [
+            "cargo testing",
+            "cargo testx",
+            "pytester",
+            "npm test-run",
+            "cmake --builder",
+            "echo cargo test",
+        ] {
+            assert_eq!(verification_spec(command), None);
+        }
+    }
+
+    #[test]
+    fn window_evidence_is_terminal_deduplicated_bounded_and_redacted() {
+        let mut items = (0..70)
+            .map(|index| changed_file(&format!("file-{index}"), &format!("src/{index}.rs")))
+            .collect::<Vec<_>>();
+        items.extend((0..20).map(|index| {
+            command(
+                &format!("verification-{index}"),
+                "cargo test -- --token=must-not-survive",
+                "completed",
+                0,
+            )
+        }));
+        items.extend([
+            command("verification-19", "cargo check", "failed", 1),
+            command("running", "cargo test", "inProgress", 0),
+            command("declined", "cargo test", "declined", 0),
+            command("cancelled", "cargo test", "cancelled", 0),
+            command("unknown-status", "cargo test", "unknown", 0),
+            command("unknown-command", "cargo testing", "completed", 0),
+        ]);
+        let projected = evidence(
+            vec![json!({
+                "id": "source",
+                "status": "completed",
+                "items": items
+            })],
+            "source",
+        );
+
+        assert_eq!(projected.window_changed_files.len(), 64);
+        assert_eq!(projected.window_changed_files[0], "src/6.rs");
+        assert_eq!(projected.window_changed_files[63], "src/69.rs");
+        assert_eq!(projected.verification.len(), 16);
+        assert_eq!(projected.verification[0].item_id, "verification-4");
+        let latest = projected.verification.last().unwrap();
+        assert_eq!(latest.item_id, "verification-19");
+        assert_eq!(latest.kind, "check");
+        assert_eq!(latest.status, "failed");
+        let encoded = serde_json::to_string(&projected).unwrap();
+        assert!(!encoded.contains("must-not-survive"));
+        assert!(!encoded.contains("raw output"));
+    }
+
+    #[test]
+    fn token_usage_notifications_have_no_runtime_projection() {
+        let event = parse_notification(&json!({
+            "method": "thread/tokenUsage/updated",
+            "params": {
+                "threadId": "thread",
+                "turnId": "turn",
+                "tokenUsage": {"last": {"inputTokens": 123}}
+            }
+        }))
+        .unwrap();
+        assert!(
+            matches!(event, AppEvent::UnknownNotification { method } if method == "thread/tokenUsage/updated")
+        );
     }
 
     #[test]

@@ -21,7 +21,7 @@ pub(super) async fn run_transition(
     mut events: broadcast::Receiver<AppEvent>,
     receipt_id: &str,
 ) -> Result<()> {
-    let mut evidence = evidence_from_snapshot(&snapshot.thread, &bound.turn_id);
+    let mut evidence = evidence_from_snapshot(&snapshot.thread, &bound.turn_id)?;
     await_source_turn(&mut events, bound, receipt_id, &mut evidence).await?;
 
     journal.transition(

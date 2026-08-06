@@ -9,7 +9,9 @@ use crate::journal::{JournalStore, TransitionJournal, TransitionState};
 use crate::lease::ThreadLease;
 use crate::metadata::BoundInvocation;
 use crate::observability::hash_identifier;
-use crate::protocol::{ResumeSnapshot, ThreadRef, completed_regular_turns_after};
+use crate::protocol::{
+    ResumeSnapshot, ThreadRef, completed_regular_turns_after, project_current_window_evidence,
+};
 use dashmap::DashSet;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -340,22 +342,11 @@ async fn active_descendant_exists(client: &AppServerClient, root_thread_id: &str
     Ok(false)
 }
 
-pub(super) fn evidence_from_snapshot(snapshot: &ThreadRef, source_turn_id: &str) -> Evidence {
-    let mut evidence = Evidence::default();
-    for turn in &snapshot.turns {
-        for item in &turn.items {
-            for value in &item.safe_evidence {
-                if item.item_type == "userMessage" || turn.id == source_turn_id {
-                    evidence.observe_item(value);
-                }
-            }
-        }
-        if turn.id == source_turn_id {
-            break;
-        }
-    }
-    evidence.normalize();
-    evidence
+pub(super) fn evidence_from_snapshot(
+    snapshot: &ThreadRef,
+    source_turn_id: &str,
+) -> Result<Evidence> {
+    project_current_window_evidence(snapshot, source_turn_id)
 }
 
 #[cfg(test)]
