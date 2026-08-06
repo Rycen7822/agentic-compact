@@ -67,30 +67,43 @@ fn every_state_has_a_fixed_recovery_disposition() {
 fn checkpoint_recovery_requires_idle_exact_last_compaction_turn() {
     let mut journal = journal(TransitionState::AwaitCompactionTurnCompleted);
     journal.compact_turn_id = Some("compact".to_owned());
-    let thread = ThreadRef::from_response(&json!({"thread":{
-        "id":"thread",
-        "status":{"type":"idle"},
-        "turns":[{
+    let thread = ThreadRef::from_response(
+        &json!({"thread":{
+            "id":"thread",
+            "status":{"type":"idle"},
+            "turns":[{
             "id":"compact",
             "status":"completed",
-            "items":[{"id":"item","type":"contextCompaction","status":"completed"}]
-        }]
-    }}))
+            "items":[{"id":"item","type":"contextCompaction"}]
+            }]
+        }}),
+        true,
+    )
     .unwrap();
     assert!(safe_checkpoint_recovery_snapshot(&journal, &thread));
 
-    let changed = ThreadRef::from_response(&json!({"thread":{
-        "id":"thread",
-        "status":{"type":"idle"},
-        "turns":[
-            {
+    let changed = ThreadRef::from_response(
+        &json!({"thread":{
+            "id":"thread",
+            "status":{"type":"idle"},
+            "turns":[
+                {
                 "id":"compact",
                 "status":"completed",
-                "items":[{"id":"item","type":"contextCompaction","status":"completed"}]
-            },
-            {"id":"user","status":"completed","items":[]}
-        ]
-    }}))
+                "items":[{"id":"item","type":"contextCompaction"}]
+                },
+                {"id":"user","status":"completed","items":[]}
+            ]
+        }}),
+        true,
+    )
     .unwrap();
     assert!(!safe_checkpoint_recovery_snapshot(&journal, &changed));
+
+    let mut duplicate = thread.clone();
+    duplicate.turns.push(duplicate.turns[0].clone());
+    assert!(!safe_checkpoint_recovery_snapshot(&journal, &duplicate));
+
+    journal.compact_turn_id = Some("missing".to_owned());
+    assert!(!safe_checkpoint_recovery_snapshot(&journal, &thread));
 }

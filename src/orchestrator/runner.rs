@@ -32,20 +32,7 @@ pub(super) async fn run_transition(
 
     reject_queued_competing_turn(&mut events, &bound.thread_id, &bound.turn_id)?;
     let thread = client.thread_read(&bound.thread_id, true).await?;
-    let source = thread.find_turn(&bound.turn_id).ok_or_else(|| {
-        Error::new(
-            ErrorCode::RecoveryAmbiguous,
-            "source turn is absent from the final pre-compaction snapshot",
-        )
-        .component("orchestrator")
-    })?;
-    if source.status != "completed" || !thread.is_idle() {
-        return Err(Error::new(
-            ErrorCode::RaceLost,
-            "thread is not idle with a completed source turn at the compaction boundary",
-        )
-        .component("orchestrator"));
-    }
+    require_completed_source_boundary(&thread, &bound.turn_id)?;
     ensure_no_active_descendant(client, &bound.thread_id).await?;
 
     journal.transition(
@@ -76,13 +63,7 @@ pub(super) async fn run_transition(
 
     reject_queued_competing_turn(&mut events, &bound.thread_id, &compact_turn_id)?;
     let post_compact = client.thread_read(&bound.thread_id, true).await?;
-    if !post_compact.is_idle() {
-        return Err(Error::new(
-            ErrorCode::RaceLost,
-            "thread stopped being idle before checkpoint injection",
-        )
-        .component("orchestrator"));
-    }
+    require_completed_compaction_boundary(&post_compact, &compact_turn_id)?;
 
     let checkpoint = Checkpoint::build(
         journal.checkpoint_id.clone(),
@@ -178,7 +159,7 @@ pub(super) async fn inject_and_continue(
         let confirmed = client
             .thread_read(thread_id, true)
             .await
-            .is_ok_and(|thread| contains_exact_turn(&thread, &continuation_turn_id));
+            .is_ok_and(|thread| thread.unique_turn(&continuation_turn_id).is_ok());
         if !confirmed {
             return Err(event_error);
         }
@@ -534,8 +515,28 @@ fn is_passive_source_item(item_type: &str) -> bool {
     matches!(item_type, "agentMessage" | "reasoning")
 }
 
-fn contains_exact_turn(thread: &ThreadRef, turn_id: &str) -> bool {
-    thread.turns.iter().any(|turn| turn.id == turn_id)
+fn require_completed_source_boundary(thread: &ThreadRef, source_turn_id: &str) -> Result<()> {
+    let source = thread.ensure_exact_last_turn(source_turn_id)?;
+    if source.status != "completed" || !thread.is_idle() {
+        return Err(Error::new(
+            ErrorCode::RaceLost,
+            "thread is not idle with a completed source turn at the compaction boundary",
+        )
+        .component("orchestrator"));
+    }
+    Ok(())
+}
+
+fn require_completed_compaction_boundary(thread: &ThreadRef, compact_turn_id: &str) -> Result<()> {
+    let compact = thread.ensure_exact_last_turn(compact_turn_id)?;
+    if !thread.is_idle() || !compact.is_completed_pure_compaction() {
+        return Err(Error::new(
+            ErrorCode::CompactionFailed,
+            "thread is not idle with one completed contextCompaction item",
+        )
+        .component("orchestrator"));
+    }
+    Ok(())
 }
 
 fn reject_queued_competing_turn(

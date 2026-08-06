@@ -168,8 +168,7 @@ fn begin_compaction(state: &Arc<Mutex<State>>, thread_id: &str) -> Vec<Value> {
         "status": "completed",
         "items": [{
             "id": format!("{compact_id}-item"),
-            "type": "contextCompaction",
-            "status": "completed"
+            "type": "contextCompaction"
         }]
     }));
     thread.status = "idle";
@@ -199,8 +198,7 @@ fn begin_compaction(state: &Arc<Mutex<State>>, thread_id: &str) -> Vec<Value> {
                 "completedAtMs": 2,
                 "item": {
                     "id": format!("{compact_id}-item"),
-                    "type": "contextCompaction",
-                    "status": "completed"
+                    "type": "contextCompaction"
                 }
             }
         }),

@@ -174,16 +174,62 @@ async fn permits_passive_reasoning_after_the_receipt() {
 }
 
 #[test]
-fn continuation_reconciliation_requires_the_exact_turn() {
-    let snapshot = crate::protocol::ThreadRef {
+fn continuation_reconciliation_requires_a_unique_turn() {
+    let mut snapshot = crate::protocol::ThreadRef {
         id: "thread".to_owned(),
         parent_thread_id: None,
         status: "active".to_owned(),
         turns: vec![turn("continuation", "inProgress")],
     };
 
-    assert!(contains_exact_turn(&snapshot, "continuation"));
-    assert!(!contains_exact_turn(&snapshot, "other"));
+    assert!(snapshot.unique_turn("continuation").is_ok());
+    assert!(snapshot.unique_turn("other").is_err());
+    snapshot.turns.push(turn("continuation", "completed"));
+    assert!(snapshot.unique_turn("continuation").is_err());
+}
+
+#[test]
+fn mutation_boundaries_require_unique_completed_exact_last_turns() {
+    let source = crate::protocol::ThreadRef {
+        id: "thread".to_owned(),
+        parent_thread_id: None,
+        status: "idle".to_owned(),
+        turns: vec![turn("source", "completed")],
+    };
+    assert!(require_completed_source_boundary(&source, "source").is_ok());
+    assert_eq!(
+        require_completed_source_boundary(&source, "missing")
+            .unwrap_err()
+            .code,
+        ErrorCode::RecoveryAmbiguous
+    );
+
+    let mut duplicate = source.clone();
+    duplicate.turns.push(turn("source", "completed"));
+    assert_eq!(
+        require_completed_source_boundary(&duplicate, "source")
+            .unwrap_err()
+            .code,
+        ErrorCode::RecoveryAmbiguous
+    );
+
+    let mut newer = source.clone();
+    newer.turns.push(turn("newer", "completed"));
+    assert_eq!(
+        require_completed_source_boundary(&newer, "source")
+            .unwrap_err()
+            .code,
+        ErrorCode::RecoveryAmbiguous
+    );
+
+    let compact = crate::protocol::ThreadRef {
+        turns: vec![TurnRef {
+            items: vec![item("compact-item", "contextCompaction", None)],
+            ..turn("compact", "completed")
+        }],
+        ..source
+    };
+    assert!(require_completed_compaction_boundary(&compact, "compact").is_ok());
 }
 
 #[tokio::test]

@@ -75,7 +75,7 @@ async fn phase0a_direct_mcp_contract_and_native_compaction_process_survival() {
     let compact_turn = wait_for_next_completed_turn(&mut events, &thread_id).await;
     assert!(compact_turn.items.is_empty());
     let after_compact = raw_read(&client, &thread_id).await;
-    let compact = find_turn(&after_compact, &compact_turn.id);
+    let compact = unique_turn(&after_compact, &compact_turn.id);
     let compact_items = compact["items"].as_array().unwrap();
     assert_eq!(compact_items.len(), 1);
     assert_eq!(compact_items[0]["type"], "contextCompaction");
@@ -197,11 +197,18 @@ fn snapshot_turns(snapshot: &Value) -> &[Value] {
         .expect("snapshot must contain a turns array")
 }
 
-fn find_turn<'a>(snapshot: &'a Value, turn_id: &str) -> &'a Value {
-    snapshot_turns(snapshot)
+fn unique_turn<'a>(snapshot: &'a Value, turn_id: &str) -> &'a Value {
+    let mut matches = snapshot_turns(snapshot)
         .iter()
-        .find(|turn| turn["id"] == turn_id)
-        .expect("snapshot is missing an expected turn")
+        .filter(|turn| turn["id"] == turn_id);
+    let turn = matches
+        .next()
+        .expect("snapshot is missing an expected turn");
+    assert!(
+        matches.next().is_none(),
+        "snapshot contains a duplicate turn ID"
+    );
+    turn
 }
 
 fn assert_snapshot_arrays(snapshot: &Value) {
@@ -231,10 +238,14 @@ fn assert_chronological(snapshot: &Value, turn_ids: &[&str]) {
     let positions = turn_ids
         .iter()
         .map(|turn_id| {
-            turns
+            let matches = turns
                 .iter()
-                .position(|turn| turn["id"] == *turn_id)
-                .unwrap()
+                .enumerate()
+                .filter(|(_, turn)| turn["id"] == *turn_id)
+                .map(|(index, _)| index)
+                .collect::<Vec<_>>();
+            assert_eq!(matches.len(), 1, "turn ID must be unique");
+            matches[0]
         })
         .collect::<Vec<_>>();
     assert!(positions.windows(2).all(|pair| pair[0] < pair[1]));

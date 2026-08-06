@@ -245,8 +245,7 @@ async fn completes_schedule_through_same_thread_cooldown(user_wins_after_injecti
                 "completedAtMs": 3,
                 "item": {
                     "id": "compact-item",
-                    "type": "contextCompaction",
-                    "status": "completed"
+                    "type": "contextCompaction"
                 }
             }
         }))
@@ -275,8 +274,7 @@ async fn completes_schedule_through_same_thread_cooldown(user_wins_after_injecti
                     "status": "completed",
                     "items": [{
                         "id": "compact-item",
-                        "type": "contextCompaction",
-                        "status": "completed"
+                        "type": "contextCompaction"
                     }]
                 }
             ]),

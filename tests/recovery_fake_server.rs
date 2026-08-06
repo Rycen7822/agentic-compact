@@ -108,8 +108,7 @@ async fn recover_persisted_checkpoint() {
                     "status":"completed",
                     "items":[{
                         "id":"compact-item",
-                        "type":"contextCompaction",
-                        "status":"completed"
+                        "type":"contextCompaction"
                     }]
                 }
             ]
@@ -216,8 +215,7 @@ async fn user_turn_blocks_checkpoint_recovery() {
                     "status":"completed",
                     "items":[{
                         "id":"compact-item",
-                        "type":"contextCompaction",
-                        "status":"completed"
+                        "type":"contextCompaction"
                     }]
                 },
                 {"id":"user","status":"completed","items":[]}

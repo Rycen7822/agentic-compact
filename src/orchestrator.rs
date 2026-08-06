@@ -276,14 +276,7 @@ pub(super) fn preflight_root_and_cooldown(
             )
             .component("orchestrator")
         })?;
-        let completed =
-            completed_regular_turns_after(snapshot, continuation_turn_id).ok_or_else(|| {
-                Error::new(
-                ErrorCode::RecoveryAmbiguous,
-                "the previous continuation turn is not uniquely present in the bounded snapshot",
-            )
-            .component("orchestrator")
-            })?;
+        let completed = completed_regular_turns_after(snapshot, continuation_turn_id)?;
         if completed < COOLDOWN_REGULAR_TURNS {
             return Err(Error::new(
                 ErrorCode::CooldownActive,
@@ -372,14 +365,65 @@ mod tests {
 
     #[test]
     fn rejects_subagent_snapshot() {
-        let snapshot = ThreadRef::from_response(&json!({"thread":{
-            "id":"child",
-            "status":{"type":"active","activeFlags":[]},
-            "parentThreadId":"root",
-            "turns":[]
-        }}))
+        let snapshot = ThreadRef::from_response(
+            &json!({"thread":{
+                "id":"child",
+                "status":{"type":"active","activeFlags":[]},
+                "parentThreadId":"root",
+                "turns":[]
+            }}),
+            true,
+        )
         .unwrap();
         let error = preflight_root_and_cooldown(&snapshot, None).unwrap_err();
         assert_eq!(error.code, ErrorCode::NotRootThread);
+    }
+
+    #[test]
+    fn cooldown_anchor_must_be_unique_before_counting_later_turns() {
+        let mut journal = TransitionJournal::new(
+            "thread".to_owned(),
+            "source".to_owned(),
+            "receipt".to_owned(),
+            "checkpoint".to_owned(),
+            CompactionIntent {
+                preserve: Vec::new(),
+                next_action: "continue".to_owned(),
+            },
+        )
+        .unwrap();
+        journal.state = TransitionState::Cooldown;
+        journal.continuation_turn_id = Some("continuation".to_owned());
+        let mut snapshot = ThreadRef::from_response(
+            &json!({"thread": {
+                "id": "thread",
+                "status": "idle",
+                "turns": [
+                    {"id": "continuation", "status": "completed", "items": []},
+                    {"id": "one", "status": "completed", "items": []},
+                    {"id": "two", "status": "completed", "items": []},
+                    {"id": "three", "status": "completed", "items": []}
+                ]
+            }}),
+            true,
+        )
+        .unwrap();
+        assert!(preflight_root_and_cooldown(&snapshot, Some(&journal)).is_ok());
+
+        snapshot.turns.push(snapshot.turns[0].clone());
+        assert_eq!(
+            preflight_root_and_cooldown(&snapshot, Some(&journal))
+                .unwrap_err()
+                .code,
+            ErrorCode::RecoveryAmbiguous
+        );
+
+        journal.continuation_turn_id = Some("missing".to_owned());
+        assert_eq!(
+            preflight_root_and_cooldown(&snapshot, Some(&journal))
+                .unwrap_err()
+                .code,
+            ErrorCode::RecoveryAmbiguous
+        );
     }
 }

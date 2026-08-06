@@ -137,7 +137,7 @@ async fn confirm_continuation(journal: &mut TransitionJournal) -> Result<()> {
     let result = client.thread_read(&journal.thread_id, true).await;
     client.close().await;
     let thread = result?;
-    if thread.find_turn(continuation_turn_id).is_none() {
+    if thread.unique_turn(continuation_turn_id).is_err() {
         return Err(Error::new(
             ErrorCode::RecoveryAmbiguous,
             "the exact acknowledged continuation turn is absent",
@@ -157,21 +157,10 @@ fn safe_checkpoint_recovery_snapshot(journal: &TransitionJournal, thread: &Threa
     let Some(compact_turn_id) = journal.compact_turn_id.as_deref() else {
         return false;
     };
-    let Some(compact_index) = thread
-        .turns
-        .iter()
-        .position(|turn| turn.id == compact_turn_id)
-    else {
+    let Ok(compact_turn) = thread.ensure_exact_last_turn(compact_turn_id) else {
         return false;
     };
-    if compact_index + 1 != thread.turns.len() {
-        return false;
-    }
-    let compact_turn = &thread.turns[compact_index];
-    compact_turn.status == "completed"
-        && compact_turn.items.len() == 1
-        && compact_turn.items[0].is_allowed_in_compaction_turn()
-        && compact_turn.items[0].completed_successfully()
+    compact_turn.is_completed_pure_compaction()
 }
 
 #[cfg(test)]

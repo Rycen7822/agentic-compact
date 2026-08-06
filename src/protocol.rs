@@ -14,6 +14,12 @@ const REQUEST_COMPACTION_TOOL_ALIASES: &[&str] =
     &["request_compaction", "agentic_compact.request_compaction"];
 const RECEIPT_PROJECTION_COMPONENT: &str = "receipt_projection";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TurnItemsMode {
+    Full,
+    Lifecycle,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InitializeResult {
@@ -109,7 +115,7 @@ pub enum AppEvent {
 }
 
 impl ThreadRef {
-    pub fn from_response(response: &Value) -> Result<Self> {
+    pub fn from_response(response: &Value, include_turns: bool) -> Result<Self> {
         let thread = response.get("thread").unwrap_or(response);
         let object = thread
             .as_object()
@@ -117,12 +123,17 @@ impl ThreadRef {
         let id = required_string(object.get("id"), "thread.id")?;
         let parent_thread_id = optional_string(object.get("parentThreadId"));
         let status = parse_thread_status(object.get("status"))?;
-        let turns = object
-            .get("turns")
-            .and_then(Value::as_array)
-            .map(|values| values.iter().map(TurnRef::from_value).collect())
-            .transpose()?
-            .unwrap_or_default();
+        let turns = if include_turns {
+            object
+                .get("turns")
+                .and_then(Value::as_array)
+                .ok_or_else(|| Error::protocol("full thread snapshot requires a turns array"))?
+                .iter()
+                .map(|value| TurnRef::from_value(value, TurnItemsMode::Full))
+                .collect::<Result<Vec<_>>>()?
+        } else {
+            Vec::new()
+        };
         Ok(Self {
             id,
             parent_thread_id,
@@ -139,24 +150,90 @@ impl ThreadRef {
         self.status == "idle"
     }
 
-    pub fn find_turn(&self, turn_id: &str) -> Option<&TurnRef> {
-        self.turns.iter().find(|turn| turn.id == turn_id)
+    pub fn unique_turn_index(&self, turn_id: &str) -> Result<usize> {
+        let mut matches = self
+            .turns
+            .iter()
+            .enumerate()
+            .filter(|(_, turn)| turn.id == turn_id)
+            .map(|(index, _)| index);
+        let index = matches.next().ok_or_else(|| {
+            Error::new(
+                ErrorCode::RecoveryAmbiguous,
+                "turn anchor is missing from the full snapshot",
+            )
+            .component("protocol")
+        })?;
+        if matches.next().is_some() {
+            return Err(Error::new(
+                ErrorCode::RecoveryAmbiguous,
+                "turn anchor is duplicated in the full snapshot",
+            )
+            .component("protocol"));
+        }
+        Ok(index)
+    }
+
+    pub fn unique_turn(&self, turn_id: &str) -> Result<&TurnRef> {
+        Ok(&self.turns[self.unique_turn_index(turn_id)?])
+    }
+
+    pub fn ensure_exact_last_turn(&self, turn_id: &str) -> Result<&TurnRef> {
+        let index = self.unique_turn_index(turn_id)?;
+        if index + 1 != self.turns.len() {
+            return Err(Error::new(
+                ErrorCode::RecoveryAmbiguous,
+                "turn anchor is not the exact last turn in the full snapshot",
+            )
+            .component("protocol"));
+        }
+        Ok(&self.turns[index])
+    }
+
+    pub fn ordered_items_through_turn(
+        &self,
+        turn_id: &str,
+    ) -> Result<impl Iterator<Item = (usize, usize, &ItemRef)>> {
+        let last_turn = self.unique_turn_index(turn_id)?;
+        Ok(self.turns[..=last_turn]
+            .iter()
+            .enumerate()
+            .flat_map(|(turn_index, turn)| {
+                turn.items
+                    .iter()
+                    .enumerate()
+                    .map(move |(item_index, item)| (turn_index, item_index, item))
+            }))
     }
 }
 
 impl TurnRef {
-    pub fn from_value(value: &Value) -> Result<Self> {
+    fn from_value(value: &Value, mode: TurnItemsMode) -> Result<Self> {
         let object = value
             .as_object()
             .ok_or_else(|| Error::protocol("turn must be an object"))?;
         let id = required_string(object.get("id"), "turn.id")?;
         let status = required_string(object.get("status"), "turn.status")?;
+        match (mode, object.get("itemsView")) {
+            (TurnItemsMode::Full, None) => {}
+            (TurnItemsMode::Full, Some(Value::String(view))) if view == "full" => {}
+            (TurnItemsMode::Lifecycle, None) => {}
+            (TurnItemsMode::Lifecycle, Some(Value::String(view)))
+                if matches!(view.as_str(), "notLoaded" | "summary" | "full") => {}
+            (TurnItemsMode::Full, _) => {
+                return Err(Error::protocol("turn.itemsView must be full"));
+            }
+            (TurnItemsMode::Lifecycle, _) => {
+                return Err(Error::protocol("turn.itemsView is invalid"));
+            }
+        }
         let items = object
             .get("items")
             .and_then(Value::as_array)
-            .map(|values| values.iter().map(ItemRef::from_value).collect())
-            .transpose()?
-            .unwrap_or_default();
+            .ok_or_else(|| Error::protocol("full turn snapshot requires an items array"))?
+            .iter()
+            .map(ItemRef::from_value)
+            .collect::<Result<Vec<_>>>()?;
         Ok(Self { id, status, items })
     }
 
@@ -168,6 +245,13 @@ impl TurnRef {
 
     pub fn is_completed_regular(&self) -> bool {
         self.status == "completed" && !self.is_compaction()
+    }
+
+    pub fn is_completed_pure_compaction(&self) -> bool {
+        self.status == "completed"
+            && self.items.len() == 1
+            && self.items[0].is_allowed_in_compaction_turn()
+            && !self.items[0].has_error
     }
 }
 
@@ -223,7 +307,7 @@ impl ItemRef {
 
 pub fn parse_resume_snapshot(response: &Value) -> Result<ResumeSnapshot> {
     Ok(ResumeSnapshot {
-        thread: ThreadRef::from_response(response)?,
+        thread: ThreadRef::from_response(response, true)?,
         model: optional_snapshot_string(response, "model")?,
         reasoning_effort: optional_snapshot_string(response, "reasoningEffort")?,
         cwd: optional_snapshot_string(response, "cwd")?,
@@ -265,7 +349,7 @@ pub fn turn_from_response(response: &Value) -> Result<TurnRef> {
     let turn = response
         .get("turn")
         .ok_or_else(|| Error::protocol("turn response is missing turn"))?;
-    TurnRef::from_value(turn)
+    TurnRef::from_value(turn, TurnItemsMode::Lifecycle)
 }
 
 pub fn loaded_thread_page(response: &Value) -> Result<(Vec<String>, Option<String>)> {
@@ -309,6 +393,7 @@ pub fn parse_notification(message: &Value) -> Result<AppEvent> {
                 params
                     .get("turn")
                     .ok_or_else(|| Error::protocol("turn/started is missing turn"))?,
+                TurnItemsMode::Lifecycle,
             )?,
         }),
         "turn/completed" => {
@@ -317,7 +402,7 @@ pub fn parse_notification(message: &Value) -> Result<AppEvent> {
                 .get("turn")
                 .ok_or_else(|| Error::protocol("turn/completed is missing turn"))?;
             let turn_id = required_path_string(value, "/id", "turn.id")?;
-            match TurnRef::from_value(value) {
+            match TurnRef::from_value(value, TurnItemsMode::Lifecycle) {
                 Ok(turn) => Ok(AppEvent::TurnCompleted { thread_id, turn }),
                 Err(error) if error.component == RECEIPT_PROJECTION_COMPONENT => {
                     Ok(AppEvent::RequestCompactionResultInvalid { thread_id, turn_id })
@@ -367,14 +452,12 @@ pub fn parse_notification(message: &Value) -> Result<AppEvent> {
     }
 }
 
-pub fn completed_regular_turns_after(thread: &ThreadRef, turn_id: &str) -> Option<usize> {
-    let index = thread.turns.iter().position(|turn| turn.id == turn_id)?;
-    Some(
-        thread.turns[index + 1..]
-            .iter()
-            .filter(|turn| turn.is_completed_regular())
-            .count(),
-    )
+pub fn completed_regular_turns_after(thread: &ThreadRef, turn_id: &str) -> Result<usize> {
+    let index = thread.unique_turn_index(turn_id)?;
+    Ok(thread.turns[index + 1..]
+        .iter()
+        .filter(|turn| turn.is_completed_regular())
+        .count())
 }
 
 fn project_safe_evidence(item_type: &str, object: &serde_json::Map<String, Value>) -> Vec<Value> {
@@ -597,6 +680,221 @@ mod tests {
     }
 
     #[test]
+    fn full_snapshot_rejects_partial_turn_and_item_shapes() {
+        let invalid = [
+            json!({"thread": {"id": "thread", "status": "idle"}}),
+            json!({"thread": {"id": "thread", "status": "idle", "turns": null}}),
+            json!({
+                "thread": {
+                    "id": "thread",
+                    "status": "idle",
+                    "turns": [{"id": "turn", "status": "completed"}]
+                }
+            }),
+            json!({
+                "thread": {
+                    "id": "thread",
+                    "status": "idle",
+                    "turns": [{"id": "turn", "status": "completed", "items": null}]
+                }
+            }),
+            json!({
+                "thread": {
+                    "id": "thread",
+                    "status": "idle",
+                    "turns": [{
+                        "id": "turn",
+                        "status": "completed",
+                        "items": [],
+                        "itemsView": null
+                    }]
+                }
+            }),
+            json!({
+                "thread": {
+                    "id": "thread",
+                    "status": "idle",
+                    "turns": [{
+                        "id": "turn",
+                        "status": "completed",
+                        "items": [],
+                        "itemsView": "summary"
+                    }]
+                }
+            }),
+            json!({
+                "thread": {
+                    "id": "thread",
+                    "status": "idle",
+                    "turns": [{
+                        "id": "turn",
+                        "status": "completed",
+                        "items": [],
+                        "itemsView": "notLoaded"
+                    }]
+                }
+            }),
+        ];
+        for snapshot in invalid {
+            assert_eq!(
+                ThreadRef::from_response(&snapshot, true).unwrap_err().code,
+                ErrorCode::Protocol
+            );
+        }
+
+        for items_view in [None, Some("full")] {
+            let mut turn = json!({"id": "turn", "status": "completed", "items": []});
+            if let Some(items_view) = items_view {
+                turn["itemsView"] = json!(items_view);
+            }
+            let snapshot = json!({
+                "thread": {"id": "thread", "status": "idle", "turns": [turn]}
+            });
+            assert!(ThreadRef::from_response(&snapshot, true).is_ok());
+        }
+
+        let shallow = ThreadRef::from_response(
+            &json!({
+                "thread": {
+                    "id": "thread",
+                    "status": "active",
+                    "turns": [{"itemsView": "summary"}]
+                }
+            }),
+            false,
+        )
+        .unwrap();
+        assert!(shallow.turns.is_empty());
+    }
+
+    #[test]
+    fn lifecycle_turn_views_are_bounded_but_not_full_decisions() {
+        for view in ["notLoaded", "summary", "full"] {
+            let turn = json!({
+                "id": "turn",
+                "status": "completed",
+                "items": [],
+                "itemsView": view
+            });
+            assert!(TurnRef::from_value(&turn, TurnItemsMode::Lifecycle).is_ok());
+            if view == "full" {
+                assert!(TurnRef::from_value(&turn, TurnItemsMode::Full).is_ok());
+            } else {
+                assert!(TurnRef::from_value(&turn, TurnItemsMode::Full).is_err());
+            }
+        }
+
+        for invalid in [
+            json!({"id": "turn", "status": "completed", "itemsView": "summary"}),
+            json!({
+                "id": "turn",
+                "status": "completed",
+                "items": [],
+                "itemsView": null
+            }),
+            json!({
+                "id": "turn",
+                "status": "completed",
+                "items": [],
+                "itemsView": "unknown"
+            }),
+        ] {
+            assert_eq!(
+                TurnRef::from_value(&invalid, TurnItemsMode::Lifecycle)
+                    .unwrap_err()
+                    .code,
+                ErrorCode::Protocol
+            );
+        }
+    }
+
+    #[test]
+    fn turn_anchors_are_unique_exact_and_ordered() {
+        let mut thread = ThreadRef::from_response(
+            &json!({"thread": {
+                "id": "thread",
+                "status": "idle",
+                "turns": [
+                    {
+                        "id": "first",
+                        "status": "completed",
+                        "items": [
+                            {"id": "first-1", "type": "reasoning"},
+                            {"id": "first-2", "type": "agentMessage"}
+                        ]
+                    },
+                    {
+                        "id": "last",
+                        "status": "completed",
+                        "items": [{"id": "last-1", "type": "agentMessage"}]
+                    }
+                ]
+            }}),
+            true,
+        )
+        .unwrap();
+        assert_eq!(thread.unique_turn_index("last").unwrap(), 1);
+        assert!(thread.ensure_exact_last_turn("last").is_ok());
+        assert!(thread.ensure_exact_last_turn("first").is_err());
+        assert!(thread.unique_turn("missing").is_err());
+        let ordered = thread
+            .ordered_items_through_turn("last")
+            .unwrap()
+            .map(|(turn, item, value)| (turn, item, value.id.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            ordered,
+            vec![(0, 0, "first-1"), (0, 1, "first-2"), (1, 0, "last-1")]
+        );
+
+        thread.turns.push(thread.turns[1].clone());
+        assert!(thread.unique_turn("last").is_err());
+        assert!(thread.ensure_exact_last_turn("last").is_err());
+        assert!(thread.ordered_items_through_turn("last").is_err());
+    }
+
+    #[test]
+    fn pure_compaction_requires_one_error_free_item_without_item_status() {
+        let pure = TurnRef::from_value(
+            &json!({
+                "id": "compact",
+                "status": "completed",
+                "items": [{"id": "item", "type": "contextCompaction"}]
+            }),
+            TurnItemsMode::Full,
+        )
+        .unwrap();
+        assert!(pure.is_completed_pure_compaction());
+
+        for invalid in [
+            json!({
+                "id": "compact",
+                "status": "inProgress",
+                "items": [{"id": "item", "type": "contextCompaction"}]
+            }),
+            json!({
+                "id": "compact",
+                "status": "completed",
+                "items": [{"id": "item", "type": "contextCompaction", "error": {}}]
+            }),
+            json!({
+                "id": "compact",
+                "status": "completed",
+                "items": [
+                    {"id": "item", "type": "contextCompaction"},
+                    {"id": "extra", "type": "agentMessage"}
+                ]
+            }),
+        ] {
+            assert!(
+                !TurnRef::from_value(&invalid, TurnItemsMode::Full)
+                    .unwrap()
+                    .is_completed_pure_compaction()
+            );
+        }
+    }
+
+    #[test]
     fn item_projection_keeps_only_bounded_safe_fields() {
         let verification = ItemRef::from_value(&json!({
             "type": "commandExecution",
@@ -813,7 +1111,7 @@ mod tests {
     #[test]
     fn resume_snapshot_rejects_oversized_settings() {
         let error = parse_resume_snapshot(&json!({
-            "thread": {"id": "thread", "status": "active"},
+            "thread": {"id": "thread", "status": "active", "turns": []},
             "cwd": "x".repeat(16 * 1024 + 1)
         }))
         .unwrap_err();

@@ -364,7 +364,7 @@ impl AppServerClient {
                 include_turns,
             )
             .await?;
-        ThreadRef::from_response(&response)
+        ThreadRef::from_response(&response, include_turns)
     }
 
     pub async fn thread_resume(&self, thread_id: &str) -> Result<ResumeSnapshot> {
