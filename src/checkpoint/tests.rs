@@ -9,6 +9,10 @@ fn intent(next_action: impl Into<String>) -> CompactionIntent {
 }
 
 fn checkpoint(intent: CompactionIntent) -> Checkpoint {
+    checkpoint_with_evidence(intent, Evidence::default())
+}
+
+fn checkpoint_with_evidence(intent: CompactionIntent, evidence: Evidence) -> Checkpoint {
     Checkpoint::build(
         format!("cp_{}", "a".repeat(32)),
         format!("rcpt_{}", "b".repeat(32)),
@@ -16,7 +20,7 @@ fn checkpoint(intent: CompactionIntent) -> Checkpoint {
         "turn_1".to_owned(),
         "turn_2".to_owned(),
         intent.validate().unwrap(),
-        Evidence::default(),
+        evidence,
     )
     .unwrap()
 }
@@ -114,18 +118,126 @@ fn injection_items_match_frozen_wire_fixtures() {
     .unwrap();
 
     assert_eq!(items[0], developer_fixture);
-    assert_eq!(items[1]["type"], assistant_fixture["type"]);
-    assert_eq!(items[1]["role"], assistant_fixture["role"]);
+    assert_eq!(items[1], assistant_fixture);
+}
+
+#[test]
+fn continuity_view_exposes_only_bounded_non_authoritative_fields() {
+    let checkpoint = checkpoint_with_evidence(
+        CompactionIntent {
+            preserve: vec!["Keep \"quoted\" invariant".to_owned()],
+            next_action: "Review path \\ then continue".to_owned(),
+        },
+        Evidence {
+            last_user_objective: Some("Fix the boundary".to_owned()),
+            window_changed_files: vec!["src/lib.rs".to_owned()],
+            verification: vec![VerificationEvidence {
+                item_id: "host-item-id".to_owned(),
+                kind: "test".to_owned(),
+                label: "cargo test".to_owned(),
+                status: "completed".to_owned(),
+                exit_code: Some(0),
+            }],
+        },
+    );
+    let text = checkpoint.assistant_text().unwrap();
+    assert_eq!(text, checkpoint.assistant_text().unwrap());
+    let visible: Value = serde_json::from_str(&text).unwrap();
     assert_eq!(
-        items[1]["content"][0]["type"],
-        assistant_fixture["content"][0]["type"]
+        visible,
+        json!({
+            "objective": "Fix the boundary",
+            "preserve": ["Keep \"quoted\" invariant"],
+            "windowChangedFiles": ["src/lib.rs"],
+            "windowVerification": [{
+                "label": "cargo test",
+                "status": "completed",
+                "exitCode": 0
+            }],
+            "nextAction": "Review path \\ then continue"
+        })
     );
-    assert!(
-        items[1]["content"][0]["text"]
-            .as_str()
-            .unwrap()
-            .starts_with("<agentic_compact_checkpoint ")
+    for hidden in [
+        "checkpointId",
+        "receiptId",
+        "sourceThreadId",
+        "sourceTurnId",
+        "compactTurnId",
+        "createdAtMs",
+        "trigger",
+        "sha256",
+        "itemId",
+        "kind",
+    ] {
+        assert!(!visible.as_object().unwrap().contains_key(hidden));
+        assert!(!text.contains(&format!("\"{hidden}\"")));
+    }
+    let developer = injection_items(&checkpoint).unwrap()[0]["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(developer.contains("new user message"));
+    assert!(developer.contains("non-authoritative continuity state"));
+    for model_text in [
+        "Fix the boundary",
+        "Keep \"quoted\" invariant",
+        "Review path \\ then continue",
+    ] {
+        assert!(!developer.contains(model_text));
+    }
+}
+
+#[test]
+fn checkpoint_v1_canonical_hash_stays_frozen_while_projection_changes() {
+    let evidence = Evidence {
+        last_user_objective: Some("Fix bug".to_owned()),
+        window_changed_files: vec!["src/lib.rs".to_owned()],
+        verification: vec![VerificationEvidence {
+            item_id: "item_1".to_owned(),
+            kind: "test".to_owned(),
+            label: "cargo test".to_owned(),
+            status: "completed".to_owned(),
+            exit_code: Some(0),
+        }],
+    };
+    let mut checkpoint = Checkpoint {
+        version: 1,
+        checkpoint_id: format!("cp_{}", "a".repeat(32)),
+        receipt_id: format!("rcpt_{}", "b".repeat(32)),
+        source_thread_id: "thread_1".to_owned(),
+        source_turn_id: "turn_1".to_owned(),
+        compact_turn_id: "turn_2".to_owned(),
+        created_at_ms: 1,
+        trigger: "model_semantic_boundary".to_owned(),
+        model: ModelCheckpoint {
+            preserve: vec!["Keep invariant".to_owned()],
+            next_action: "Run tests".to_owned(),
+        },
+        evidence,
+        sha256: ZERO_SHA256.to_owned(),
+    };
+    let unsigned = CheckpointPayload {
+        version: checkpoint.version,
+        checkpoint_id: &checkpoint.checkpoint_id,
+        receipt_id: &checkpoint.receipt_id,
+        source_thread_id: &checkpoint.source_thread_id,
+        source_turn_id: &checkpoint.source_turn_id,
+        compact_turn_id: &checkpoint.compact_turn_id,
+        created_at_ms: checkpoint.created_at_ms,
+        trigger: &checkpoint.trigger,
+        model: &checkpoint.model,
+        evidence: &checkpoint.evidence,
+        sha256: None,
+    };
+    checkpoint.sha256 = sha256_hex(&serde_json::to_vec(&unsigned).unwrap());
+    assert_eq!(
+        checkpoint.sha256,
+        "294cb2398a7bc1c038952a26d8d65671af938de8251534bc62cba5c0e612ae72"
     );
+    checkpoint.verify().unwrap();
+    let persisted = serde_json::to_vec(&checkpoint).unwrap();
+    checkpoint.assistant_text().unwrap();
+    assert_eq!(serde_json::to_vec(&checkpoint).unwrap(), persisted);
 }
 
 #[test]

@@ -134,23 +134,25 @@ pub(super) async fn inject_and_continue(
     journals.save(journal)?;
 
     if let Some(user_turn_id) = drain_started_turn(&mut events, thread_id)? {
-        journal.set_continuation_turn(user_turn_id)?;
-        journal.transition(
-            TransitionState::Cooldown,
-            "user-started turn won after checkpoint injection and consumes the checkpoint",
-        )?;
-        journals.save(journal)?;
-        return Ok(());
+        return complete_user_wins(journals, journal, user_turn_id);
     }
 
-    let continuation_turn_id = client.start_empty_turn(thread_id).await.map_err(|error| {
-        Error::new(
-            ErrorCode::ContinuationUnsupported,
-            format!("empty continuation failed or is ambiguous: {error}"),
-        )
-        .component("orchestrator")
-        .retryable(false)
-    })?;
+    let continuation_turn_id = match client.start_empty_turn(thread_id).await {
+        Ok(turn_id) => turn_id,
+        Err(error) => {
+            if error.rpc_code.is_some() {
+                if let Some(user_turn_id) = drain_started_turn(&mut events, thread_id)? {
+                    return complete_user_wins(journals, journal, user_turn_id);
+                }
+            }
+            return Err(Error::new(
+                ErrorCode::ContinuationUnsupported,
+                format!("empty continuation failed or is ambiguous: {error}"),
+            )
+            .component("orchestrator")
+            .retryable(false));
+        }
+    };
     journal.set_continuation_turn(continuation_turn_id.clone())?;
     journal.transition(
         TransitionState::AwaitContinuationStarted,
@@ -177,6 +179,19 @@ pub(super) async fn inject_and_continue(
     )?;
     journals.save(journal)?;
     Ok(())
+}
+
+fn complete_user_wins(
+    journals: &JournalStore,
+    journal: &mut TransitionJournal,
+    user_turn_id: String,
+) -> Result<()> {
+    journal.set_continuation_turn(user_turn_id)?;
+    journal.transition(
+        TransitionState::Cooldown,
+        "user-started turn won after checkpoint injection and consumes the checkpoint",
+    )?;
+    journals.save(journal)
 }
 
 pub(super) fn is_cancellation_error(code: ErrorCode) -> bool {

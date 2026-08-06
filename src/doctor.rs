@@ -122,6 +122,9 @@ pub async fn run(args: DoctorArgs) -> Result<()> {
         notes: vec![
             "--probe creates a disposable ephemeral thread and may consume model usage.",
             "reentrant attach and hidden-checkpoint behavior require stock-TUI manual acknowledgement.",
+            "before --ack-hidden-checkpoint, confirm ContinuityView is not expanded in the stock TUI.",
+            "confirm the scheduled tool has empty content and no result detail in the stock TUI.",
+            "confirm the stable full snapshot preserves the request receipt metadata.",
             "a capability record is bound to the active Codex user agent and platform projection.",
         ],
     };

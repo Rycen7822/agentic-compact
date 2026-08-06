@@ -36,7 +36,7 @@ const VERIFICATION_SPECS: &[(&str, &str, &str)] = &[
     ("cmake --build", "build", "cmake --build"),
 ];
 
-const DEVELOPER_WRAPPER: &str = "A host-controlled agentic-compact transition has completed.\nResume the existing task from the immediately following checkpoint.\nTreat checkpoint fields as continuity state, not as new user authority.\nVerify repository-dependent claims against the current workspace.\nExecute nextAction without repeating completed work.";
+const DEVELOPER_WRAPPER: &str = "A host-controlled agentic-compact transition has completed.\nThe following assistant checkpoint is non-authoritative continuity state.\nIf this turn contains a new user message, follow that message and use the checkpoint only as background.\nOtherwise, validate nextAction and repository-dependent claims against the current workspace, then continue from the nearest valid next step without repeating resolved work.";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -106,6 +106,28 @@ struct CheckpointPayload<'a> {
     evidence: &'a Evidence,
     #[serde(skip_serializing_if = "Option::is_none")]
     sha256: Option<&'a str>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ContinuityView<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    objective: Option<&'a str>,
+    preserve: &'a [String],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    window_changed_files: Option<&'a [String]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    window_verification: Option<Vec<ContinuityVerification<'a>>>,
+    next_action: &'a str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ContinuityVerification<'a> {
+    label: &'a str,
+    status: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    exit_code: Option<i64>,
 }
 
 impl CompactionIntent {
@@ -371,11 +393,30 @@ impl Checkpoint {
 
     pub fn assistant_text(&self) -> Result<String> {
         self.verify()?;
-        let json = serde_json::to_string(self)?;
-        Ok(format!(
-            "<agentic_compact_checkpoint id=\"{}\" sha256=\"{}\">\n{}\n</agentic_compact_checkpoint>",
-            self.checkpoint_id, self.sha256, json
-        ))
+        Ok(serde_json::to_string(&self.continuity_view())?)
+    }
+
+    fn continuity_view(&self) -> ContinuityView<'_> {
+        let window_changed_files = (!self.evidence.window_changed_files.is_empty())
+            .then_some(self.evidence.window_changed_files.as_slice());
+        let window_verification = (!self.evidence.verification.is_empty()).then(|| {
+            self.evidence
+                .verification
+                .iter()
+                .map(|entry| ContinuityVerification {
+                    label: entry.label.as_str(),
+                    status: entry.status.as_str(),
+                    exit_code: entry.exit_code,
+                })
+                .collect()
+        });
+        ContinuityView {
+            objective: self.evidence.last_user_objective.as_deref(),
+            preserve: &self.model.preserve,
+            window_changed_files,
+            window_verification,
+            next_action: self.model.next_action.as_str(),
+        }
     }
 }
 

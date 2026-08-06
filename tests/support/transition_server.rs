@@ -2,6 +2,7 @@
 
 mod connection;
 
+use agentic_compact::checkpoint::CompactionIntent;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -48,8 +49,7 @@ struct TransitionRecord {
     source_id: String,
     compact_id: String,
     continuation_id: String,
-    expected_receipt: String,
-    expected_checkpoint: String,
+    expected_continuity: Value,
     source_completed_at: Option<Instant>,
     compact_requested_at: Option<Instant>,
     compact_completed_at: Option<Instant>,
@@ -168,15 +168,17 @@ impl TransitionServer {
         thread_id: &str,
         sequence: usize,
         receipt_id: &str,
-        checkpoint_id: &str,
+        intent: &CompactionIntent,
     ) {
         let (source_id, completed_at, request_item) = {
             let mut state = self.state.lock().unwrap();
             let thread = state.threads.get_mut(thread_id).unwrap();
             let (source_id, completed_at) = {
                 let record = thread.records.get_mut(sequence).unwrap();
-                record.expected_receipt = receipt_id.to_owned();
-                record.expected_checkpoint = checkpoint_id.to_owned();
+                record.expected_continuity = json!({
+                    "preserve": &intent.preserve,
+                    "nextAction": intent.next_action.as_str()
+                });
                 let completed_at = Instant::now();
                 record.source_completed_at = Some(completed_at);
                 (record.source_id.clone(), completed_at)

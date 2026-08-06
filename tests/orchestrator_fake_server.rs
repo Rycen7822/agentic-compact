@@ -16,6 +16,14 @@ mod support;
 
 use support::{EnvironmentGuard, FakeServer, write_ready_capability};
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum InjectionOutcome {
+    AutomaticContinuation,
+    UserWinsAfterAck,
+    UserWinsDuringContinuationStart,
+    Failure,
+}
+
 async fn request(server: &mut FakeServer, method: &str) -> Value {
     let request = server.next_request().await;
     assert_eq!(request["method"], method);
@@ -38,6 +46,33 @@ fn journal_path(state_root: &Path, thread_id: &str) -> PathBuf {
     state_root
         .join("journals")
         .join(format!("{}.json", hash_identifier(thread_id)))
+}
+
+async fn wait_for_journal_state(
+    journals: &JournalStore,
+    thread_id: &str,
+    state: TransitionState,
+) -> TransitionJournal {
+    timeout(Duration::from_secs(2), async {
+        loop {
+            if let Some(journal) = journals.load(thread_id).unwrap() {
+                if journal.state == state {
+                    break journal;
+                }
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| {
+        panic!(
+            "journal did not reach {state:?}: {:?}",
+            journals
+                .load(thread_id)
+                .unwrap()
+                .map(|journal| (journal.state, journal.reason_code))
+        )
+    })
 }
 
 fn persist_terminal_journal(
@@ -101,8 +136,13 @@ fn thread(id: &str, status: &str, turns: Value) -> Value {
 
 #[tokio::test]
 async fn exercises_schedule_acceptance_and_preflight_rejections() {
-    completes_schedule_through_same_thread_cooldown(false).await;
-    completes_schedule_through_same_thread_cooldown(true).await;
+    completes_schedule_through_same_thread_cooldown(InjectionOutcome::AutomaticContinuation).await;
+    completes_schedule_through_same_thread_cooldown(InjectionOutcome::UserWinsAfterAck).await;
+    completes_schedule_through_same_thread_cooldown(
+        InjectionOutcome::UserWinsDuringContinuationStart,
+    )
+    .await;
+    completes_schedule_through_same_thread_cooldown(InjectionOutcome::Failure).await;
     cooldown_rejection_preserves_prior_journal_bytes().await;
     repeated_cooldown_rejections_cannot_erase_continuation_anchor().await;
     root_rejection_does_not_create_journal().await;
@@ -110,7 +150,7 @@ async fn exercises_schedule_acceptance_and_preflight_rejections() {
     prepare_timeout_does_not_create_journal().await;
 }
 
-async fn completes_schedule_through_same_thread_cooldown(user_wins_after_injection: bool) {
+async fn completes_schedule_through_same_thread_cooldown(outcome: InjectionOutcome) {
     let mut server = FakeServer::start().await;
     let state_root = server.codex_home().parent().unwrap().join("state");
     let _codex_home = EnvironmentGuard::set("CODEX_HOME", server.codex_home());
@@ -305,7 +345,23 @@ async fn completes_schedule_through_same_thread_cooldown(user_wins_after_injecti
     let injection = request(&mut server, "thread/inject_items").await;
     assert_eq!(injection["params"]["threadId"], "thread");
     assert_eq!(injection["params"]["items"].as_array().unwrap().len(), 2);
-    if user_wins_after_injection {
+    if outcome == InjectionOutcome::Failure {
+        server
+            .send(json!({"id": injection["id"], "error": {
+                "code": -32000,
+                "message": "injection rejected"
+            }}))
+            .await;
+        acknowledge_unsubscribe(&mut server, "thread").await;
+        let journals = JournalStore::open().unwrap();
+        let journal =
+            wait_for_journal_state(&journals, "thread", TransitionState::FailedSafe).await;
+        assert_eq!(journal.reason_code.as_deref(), Some("injection_failed"));
+        assert!(server.try_next_request().is_none());
+        return;
+    }
+    respond(&server, &injection, json!({})).await;
+    if outcome == InjectionOutcome::UserWinsAfterAck {
         server
             .send(json!({
                 "method": "turn/started",
@@ -320,65 +376,64 @@ async fn completes_schedule_through_same_thread_cooldown(user_wins_after_injecti
             }))
             .await;
     }
-    respond(&server, &injection, json!({})).await;
 
-    let expected_continuation = if user_wins_after_injection {
+    let expected_continuation = if outcome == InjectionOutcome::UserWinsAfterAck {
         "user"
     } else {
         let continuation = request(&mut server, "turn/start").await;
         assert_eq!(continuation["params"]["input"], json!([]));
-        respond(
-            &server,
-            &continuation,
-            json!({
-                "turn": {
-                    "id": "continuation",
-                    "status": "inProgress",
-                    "items": []
-                }
-            }),
-        )
-        .await;
-        server
-            .send(json!({
-                "method": "turn/started",
-                "params": {
-                    "threadId": "thread",
+        if outcome == InjectionOutcome::UserWinsDuringContinuationStart {
+            server
+                .send(json!({
+                    "method": "turn/started",
+                    "params": {
+                        "threadId": "thread",
+                        "turn": {"id": "user", "status": "inProgress", "items": []}
+                    }
+                }))
+                .await;
+            server
+                .send(json!({"id": continuation["id"], "error": {
+                    "code": -32000,
+                    "message": "turn already active"
+                }}))
+                .await;
+            "user"
+        } else {
+            respond(
+                &server,
+                &continuation,
+                json!({
                     "turn": {
                         "id": "continuation",
                         "status": "inProgress",
                         "items": []
                     }
-                }
-            }))
+                }),
+            )
             .await;
-        "continuation"
+            server
+                .send(json!({
+                    "method": "turn/started",
+                    "params": {
+                        "threadId": "thread",
+                        "turn": {
+                            "id": "continuation",
+                            "status": "inProgress",
+                            "items": []
+                        }
+                    }
+                }))
+                .await;
+            "continuation"
+        }
     };
 
     let unsubscribe = request(&mut server, "thread/unsubscribe").await;
     respond(&server, &unsubscribe, json!({})).await;
 
     let journals = JournalStore::open().unwrap();
-    let journal = timeout(Duration::from_secs(2), async {
-        loop {
-            if let Some(journal) = journals.load("thread").unwrap() {
-                if journal.state == TransitionState::Cooldown {
-                    break journal;
-                }
-            }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .unwrap_or_else(|_| {
-        panic!(
-            "journal did not reach cooldown: {:?}",
-            journals
-                .load("thread")
-                .unwrap()
-                .map(|journal| (journal.state, journal.reason_code))
-        )
-    });
+    let journal = wait_for_journal_state(&journals, "thread", TransitionState::Cooldown).await;
     assert_eq!(journal.source_turn_id, "source");
     assert_eq!(journal.compact_turn_id.as_deref(), Some("compact"));
     assert_eq!(

@@ -124,7 +124,19 @@ async fn recover_persisted_checkpoint() {
     .await;
 
     let injection = request(&mut server, "thread/inject_items").await;
-    assert_eq!(injection["params"]["items"].as_array().unwrap().len(), 2);
+    let items = injection["params"]["items"].as_array().unwrap();
+    assert_eq!(items.len(), 2);
+    let assistant_text = items[1]["content"][0]["text"].as_str().unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(assistant_text).unwrap(),
+        json!({"preserve":["keep invariant"],"nextAction":"continue recovery"})
+    );
+    assert!(
+        items[0]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("non-authoritative continuity state")
+    );
     respond(&server, &injection, json!({})).await;
     let continuation = request(&mut server, "turn/start").await;
     assert_eq!(continuation["params"]["input"], json!([]));

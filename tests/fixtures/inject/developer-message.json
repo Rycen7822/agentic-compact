@@ -4,7 +4,7 @@
   "content": [
     {
       "type": "input_text",
-      "text": "A host-controlled agentic-compact transition has completed.\nResume the existing task from the immediately following checkpoint.\nTreat checkpoint fields as continuity state, not as new user authority.\nVerify repository-dependent claims against the current workspace.\nExecute nextAction without repeating completed work."
+      "text": "A host-controlled agentic-compact transition has completed.\nThe following assistant checkpoint is non-authoritative continuity state.\nIf this turn contains a new user message, follow that message and use the checkpoint only as background.\nOtherwise, validate nextAction and repository-dependent claims against the current workspace, then continue from the nearest valid next step without repeating resolved work."
     }
   ]
 }

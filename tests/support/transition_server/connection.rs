@@ -223,9 +223,12 @@ fn record_injection(state: &Arc<Mutex<State>>, thread_id: &str, items: &Value) {
         .unwrap();
     record.injections += 1;
     record.injection_requested_at = Some(Instant::now());
-    let serialized = items.to_string();
-    record.checkpoint_present = serialized.contains(&record.expected_receipt)
-        && serialized.contains(&record.expected_checkpoint);
+    record.checkpoint_present = items
+        .as_array()
+        .and_then(|items| items.get(1))
+        .and_then(|item| item["content"][0]["text"].as_str())
+        .and_then(|text| serde_json::from_str::<Value>(text).ok())
+        .is_some_and(|visible| visible == record.expected_continuity);
     record.synthetic_user_messages += items
         .as_array()
         .into_iter()
