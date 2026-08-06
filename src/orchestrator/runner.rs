@@ -1,13 +1,13 @@
 use super::{
-    COMPACTION_TIMEOUT, CONTINUATION_START_TIMEOUT, MCP_SERVER_NAMES, REQUEST_TOOL_NAMES,
-    SOURCE_TURN_TIMEOUT, ensure_no_active_descendant, evidence_from_snapshot,
+    COMPACTION_TIMEOUT, CONTINUATION_START_TIMEOUT, SOURCE_TURN_TIMEOUT,
+    ensure_no_active_descendant, evidence_from_snapshot,
 };
 use crate::app_server::AppServerClient;
 use crate::checkpoint::{Checkpoint, Evidence};
 use crate::error::{Error, ErrorCode, Result};
 use crate::journal::{JournalStore, TransitionJournal, TransitionState};
 use crate::metadata::BoundInvocation;
-use crate::protocol::{AppEvent, ItemRef, ResumeSnapshot, ThreadRef};
+use crate::protocol::{AppEvent, ResumeSnapshot, ThreadRef};
 use std::collections::HashSet;
 use tokio::sync::broadcast;
 use tokio::time::timeout;
@@ -212,12 +212,28 @@ async fn await_source_turn(
         loop {
             let event = recv_event(events).await?;
             match event {
+                AppEvent::RequestCompactionResultInvalid { thread_id, turn_id }
+                    if thread_id == bound.thread_id && turn_id == bound.turn_id =>
+                {
+                    return Err(Error::new(
+                        ErrorCode::Protocol,
+                        "request_compaction result metadata is invalid",
+                    )
+                    .component("orchestrator"));
+                }
                 AppEvent::ItemCompleted {
                     thread_id,
                     turn_id,
                     item,
                 } if thread_id == bound.thread_id && turn_id == bound.turn_id => {
-                    if request_item_id.is_none() && is_request_item(&item, receipt_id) {
+                    if request_item_id.is_none() && item.is_request_compaction_call() {
+                        if item.receipt_id.as_deref() != Some(receipt_id) {
+                            return Err(Error::new(
+                                ErrorCode::Protocol,
+                                "request_compaction result receipt did not match the schedule",
+                            )
+                            .component("orchestrator"));
+                        }
                         if !item.completed_successfully() {
                             return Err(Error::new(
                                 ErrorCode::SourceTurnFailed,
@@ -512,19 +528,6 @@ async fn await_continuation_started(
     })
     .await
     .map_err(|_| Error::timeout("orchestrator", "continuation start timed out"))?
-}
-
-fn is_request_item(item: &ItemRef, receipt_id: &str) -> bool {
-    item.item_type == "mcpToolCall"
-        && item
-            .server
-            .as_deref()
-            .is_some_and(|server| MCP_SERVER_NAMES.contains(&server))
-        && item
-            .tool
-            .as_deref()
-            .is_some_and(|tool| REQUEST_TOOL_NAMES.contains(&tool))
-        && item.contains_receipt(receipt_id)
 }
 
 fn is_passive_source_item(item_type: &str) -> bool {

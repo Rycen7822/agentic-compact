@@ -198,7 +198,9 @@ impl TransitionServer {
                     "status": "completed",
                     "server": "agentic-compact",
                     "tool": "request_compaction",
-                    "result": {"receiptId": receipt_id}
+                    "result": {
+                        "_meta": {"agenticCompact": {"receiptId": receipt_id}}
+                    }
                 }
             }
         }));

@@ -178,7 +178,9 @@ async fn completes_schedule_through_same_thread_cooldown(user_wins_after_injecti
                     "status": "completed",
                     "server": "agentic-compact",
                     "tool": "request_compaction",
-                    "result": {"receiptId": scheduled.receipt_id}
+                    "result": {
+                        "_meta": {"agenticCompact": {"receiptId": scheduled.receipt_id}}
+                    }
                 }
             }
         }))

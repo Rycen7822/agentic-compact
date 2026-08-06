@@ -26,7 +26,7 @@ fn item(id: &str, item_type: &str, status: Option<&str>) -> ItemRef {
         status: status.map(str::to_owned),
         server: None,
         tool: None,
-        receipt_ids: Vec::new(),
+        receipt_id: None,
         has_error: false,
         safe_evidence: Vec::new(),
     }
@@ -36,7 +36,7 @@ fn request_item(receipt_id: &str) -> ItemRef {
     ItemRef {
         server: Some("agentic-compact".to_owned()),
         tool: Some("request_compaction".to_owned()),
-        receipt_ids: vec![receipt_id.to_owned()],
+        receipt_id: Some(receipt_id.to_owned()),
         ..item("request", "mcpToolCall", Some("completed"))
     }
 }
@@ -114,6 +114,36 @@ async fn binds_receipt_and_accepts_quiescent_source_completion() {
     ])
     .await
     .unwrap();
+}
+
+#[tokio::test]
+async fn rejects_missing_or_mismatched_receipt_without_waiting_for_turn_completion() {
+    for observed in [None, Some("other-receipt")] {
+        let mut request = request_item("receipt");
+        request.receipt_id = observed.map(str::to_owned);
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(100),
+            source_result(vec![AppEvent::ItemCompleted {
+                thread_id: "thread".to_owned(),
+                turn_id: "source".to_owned(),
+                item: request,
+            }]),
+        )
+        .await
+        .expect("receipt mismatch waited for the source-turn timeout");
+        assert_eq!(result.unwrap_err().code, ErrorCode::Protocol);
+    }
+
+    let result = tokio::time::timeout(
+        std::time::Duration::from_millis(100),
+        source_result(vec![AppEvent::RequestCompactionResultInvalid {
+            thread_id: "thread".to_owned(),
+            turn_id: "source".to_owned(),
+        }]),
+    )
+    .await
+    .expect("invalid receipt metadata waited for the source-turn timeout");
+    assert_eq!(result.unwrap_err().code, ErrorCode::Protocol);
 }
 
 #[tokio::test]

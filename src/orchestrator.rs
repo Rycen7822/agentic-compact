@@ -24,9 +24,6 @@ pub(super) const CONTINUATION_START_TIMEOUT: Duration = Duration::from_secs(30);
 pub(super) const PREPARE_TIMEOUT: Duration = Duration::from_secs(5);
 const REJECTED_PREPARATION_CLEANUP_TIMEOUT: Duration = Duration::from_millis(250);
 pub(super) const COOLDOWN_REGULAR_TURNS: usize = 3;
-pub(super) const MCP_SERVER_NAMES: &[&str] = &["agentic-compact", "agentic_compact"];
-pub(super) const REQUEST_TOOL_NAMES: &[&str] =
-    &["request_compaction", "agentic_compact.request_compaction"];
 
 #[derive(Clone, Default)]
 pub struct TransitionRegistry {

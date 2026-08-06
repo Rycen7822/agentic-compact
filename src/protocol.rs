@@ -9,7 +9,10 @@ const MAX_PROJECTED_CHANGED_FILES: usize = 64;
 const MAX_PROJECTED_PATH_SCALARS: usize = 256;
 const MAX_PROJECTED_ITEM_ID_SCALARS: usize = 128;
 const MAX_PROJECTED_STATUS_SCALARS: usize = 32;
-const MAX_RECEIPT_IDS_PER_ITEM: usize = 8;
+const MCP_SERVER_ALIASES: &[&str] = &["agentic-compact", "agentic_compact"];
+const REQUEST_COMPACTION_TOOL_ALIASES: &[&str] =
+    &["request_compaction", "agentic_compact.request_compaction"];
+const RECEIPT_PROJECTION_COMPONENT: &str = "receipt_projection";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,7 +57,7 @@ pub struct ItemRef {
     pub status: Option<String>,
     pub server: Option<String>,
     pub tool: Option<String>,
-    pub receipt_ids: Vec<String>,
+    pub receipt_id: Option<String>,
     pub has_error: bool,
     #[serde(default)]
     pub safe_evidence: Vec<Value>,
@@ -79,6 +82,10 @@ pub enum AppEvent {
         thread_id: String,
         turn_id: String,
         item: ItemRef,
+    },
+    RequestCompactionResultInvalid {
+        thread_id: String,
+        turn_id: String,
     },
     ThreadStatusChanged {
         thread_id: String,
@@ -174,7 +181,12 @@ impl ItemRef {
         let status = optional_string(object.get("status"));
         let server = optional_string(object.get("server"));
         let tool = optional_string(object.get("tool"));
-        let receipt_ids = project_receipt_ids(object.get("result"));
+        let receipt_id =
+            if is_request_compaction_call(&item_type, server.as_deref(), tool.as_deref()) {
+                project_owned_receipt(object.get("result"))?
+            } else {
+                None
+            };
         let has_error = object.get("error").is_some_and(|value| !value.is_null());
         let safe_evidence = project_safe_evidence(&item_type, object);
         Ok(Self {
@@ -183,7 +195,7 @@ impl ItemRef {
             status,
             server,
             tool,
-            receipt_ids,
+            receipt_id,
             has_error,
             safe_evidence,
         })
@@ -200,8 +212,12 @@ impl ItemRef {
             && !self.has_error
     }
 
-    pub fn contains_receipt(&self, receipt_id: &str) -> bool {
-        self.receipt_ids.iter().any(|value| value == receipt_id)
+    pub fn is_request_compaction_call(&self) -> bool {
+        is_request_compaction_call(
+            &self.item_type,
+            self.server.as_deref(),
+            self.tool.as_deref(),
+        )
     }
 }
 
@@ -295,14 +311,20 @@ pub fn parse_notification(message: &Value) -> Result<AppEvent> {
                     .ok_or_else(|| Error::protocol("turn/started is missing turn"))?,
             )?,
         }),
-        "turn/completed" => Ok(AppEvent::TurnCompleted {
-            thread_id: required_path_string(params, "/threadId", "threadId")?,
-            turn: TurnRef::from_value(
-                params
-                    .get("turn")
-                    .ok_or_else(|| Error::protocol("turn/completed is missing turn"))?,
-            )?,
-        }),
+        "turn/completed" => {
+            let thread_id = required_path_string(params, "/threadId", "threadId")?;
+            let value = params
+                .get("turn")
+                .ok_or_else(|| Error::protocol("turn/completed is missing turn"))?;
+            let turn_id = required_path_string(value, "/id", "turn.id")?;
+            match TurnRef::from_value(value) {
+                Ok(turn) => Ok(AppEvent::TurnCompleted { thread_id, turn }),
+                Err(error) if error.component == RECEIPT_PROJECTION_COMPONENT => {
+                    Ok(AppEvent::RequestCompactionResultInvalid { thread_id, turn_id })
+                }
+                Err(error) => Err(error),
+            }
+        }
         "item/started" => Ok(AppEvent::ItemStarted {
             thread_id: required_path_string(params, "/threadId", "threadId")?,
             turn_id: required_path_string(params, "/turnId", "turnId")?,
@@ -312,15 +334,24 @@ pub fn parse_notification(message: &Value) -> Result<AppEvent> {
                     .ok_or_else(|| Error::protocol("item/started is missing item"))?,
             )?,
         }),
-        "item/completed" => Ok(AppEvent::ItemCompleted {
-            thread_id: required_path_string(params, "/threadId", "threadId")?,
-            turn_id: required_path_string(params, "/turnId", "turnId")?,
-            item: ItemRef::from_value(
-                params
-                    .get("item")
-                    .ok_or_else(|| Error::protocol("item/completed is missing item"))?,
-            )?,
-        }),
+        "item/completed" => {
+            let thread_id = required_path_string(params, "/threadId", "threadId")?;
+            let turn_id = required_path_string(params, "/turnId", "turnId")?;
+            let value = params
+                .get("item")
+                .ok_or_else(|| Error::protocol("item/completed is missing item"))?;
+            match ItemRef::from_value(value) {
+                Ok(item) => Ok(AppEvent::ItemCompleted {
+                    thread_id,
+                    turn_id,
+                    item,
+                }),
+                Err(error) if error.component == RECEIPT_PROJECTION_COMPONENT => {
+                    Ok(AppEvent::RequestCompactionResultInvalid { thread_id, turn_id })
+                }
+                Err(error) => Err(error),
+            }
+        }
         "thread/status/changed" => Ok(AppEvent::ThreadStatusChanged {
             thread_id: required_path_string(params, "/threadId", "threadId")?,
             status: parse_thread_status(params.get("status"))?,
@@ -446,46 +477,53 @@ fn verification_label(command: &str) -> Option<&'static str> {
     })
 }
 
-fn project_receipt_ids(value: Option<&Value>) -> Vec<String> {
-    let mut receipt_ids = Vec::new();
-    if let Some(value) = value {
-        collect_receipt_ids(value, &mut receipt_ids);
-    }
-    receipt_ids
+fn is_request_compaction_call(item_type: &str, server: Option<&str>, tool: Option<&str>) -> bool {
+    item_type == "mcpToolCall"
+        && server.is_some_and(|value| MCP_SERVER_ALIASES.contains(&value))
+        && tool.is_some_and(|value| REQUEST_COMPACTION_TOOL_ALIASES.contains(&value))
 }
 
-fn collect_receipt_ids(value: &Value, receipt_ids: &mut Vec<String>) {
-    if receipt_ids.len() >= MAX_RECEIPT_IDS_PER_ITEM {
-        return;
+fn project_owned_receipt(result: Option<&Value>) -> Result<Option<String>> {
+    let Some(result) = result.filter(|value| !value.is_null()) else {
+        return Ok(None);
+    };
+    let result = result
+        .as_object()
+        .ok_or_else(|| receipt_projection_error("request_compaction result must be an object"))?;
+    let Some(metadata) = result.get("_meta").filter(|value| !value.is_null()) else {
+        return Ok(None);
+    };
+    let metadata = metadata.as_object().ok_or_else(|| {
+        receipt_projection_error("request_compaction result _meta must be an object")
+    })?;
+    let Some(namespace) = metadata.get("agenticCompact") else {
+        return Ok(None);
+    };
+    let namespace = namespace.as_object().ok_or_else(|| {
+        receipt_projection_error("request_compaction agenticCompact metadata must be an object")
+    })?;
+    if namespace.len() != 1 || !namespace.contains_key("receiptId") {
+        return Err(receipt_projection_error(
+            "request_compaction agenticCompact metadata has invalid fields",
+        ));
     }
-    match value {
-        Value::String(text) => {
-            for (start, _) in text.match_indices("rcpt_") {
-                let Some(candidate) = text.get(start..start + 37) else {
-                    continue;
-                };
-                if candidate[5..].bytes().all(|byte| byte.is_ascii_hexdigit())
-                    && !receipt_ids.iter().any(|value| value == candidate)
-                {
-                    receipt_ids.push(candidate.to_owned());
-                    if receipt_ids.len() == MAX_RECEIPT_IDS_PER_ITEM {
-                        break;
-                    }
-                }
-            }
-        }
-        Value::Array(values) => {
-            for value in values {
-                collect_receipt_ids(value, receipt_ids);
-            }
-        }
-        Value::Object(values) => {
-            for value in values.values() {
-                collect_receipt_ids(value, receipt_ids);
-            }
-        }
-        _ => {}
-    }
+    let receipt_id = namespace["receiptId"]
+        .as_str()
+        .filter(|value| valid_receipt_id(value))
+        .ok_or_else(|| receipt_projection_error("request_compaction receiptId is invalid"))?;
+    Ok(Some(receipt_id.to_owned()))
+}
+
+fn receipt_projection_error(message: &'static str) -> Error {
+    Error::protocol(message).component(RECEIPT_PROJECTION_COMPONENT)
+}
+
+fn valid_receipt_id(value: &str) -> bool {
+    value.len() == 37
+        && value.starts_with("rcpt_")
+        && value[5..]
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 fn truncate_scalars(value: &str, max: usize) -> String {
@@ -560,17 +598,6 @@ mod tests {
 
     #[test]
     fn item_projection_keeps_only_bounded_safe_fields() {
-        let receipt_id = format!("rcpt_{}", "a".repeat(32));
-        let item = ItemRef::from_value(&json!({
-            "type": "mcpToolCall",
-            "id": "item_1",
-            "arguments": {"raw": "x".repeat(64 * 1024)},
-            "result": {"content": [{"text": format!("{{\"receiptId\":\"{receipt_id}\"}}")}]}
-        }))
-        .unwrap();
-        assert!(item.contains_receipt(&receipt_id));
-        assert_eq!(item.receipt_ids, vec![receipt_id]);
-
         let verification = ItemRef::from_value(&json!({
             "type": "commandExecution",
             "id": "command_1",
@@ -594,6 +621,159 @@ mod tests {
         }))
         .unwrap();
         assert!(unrelated.safe_evidence.is_empty());
+    }
+
+    fn request_item(server: &str, tool: &str, result: Option<Value>) -> Result<ItemRef> {
+        let mut value = json!({
+            "type": "mcpToolCall",
+            "id": "item_1",
+            "status": "completed",
+            "server": server,
+            "tool": tool
+        });
+        if let Some(result) = result {
+            value["result"] = result;
+        }
+        ItemRef::from_value(&value)
+    }
+
+    #[test]
+    fn receipt_projection_accepts_only_owned_metadata_for_both_aliases() {
+        let receipt_id = format!("rcpt_{}", "a".repeat(32));
+        let result = json!({
+            "other": true,
+            "_meta": {
+                "other": {"ignored": true},
+                "agenticCompact": {"receiptId": receipt_id}
+            }
+        });
+        for server in MCP_SERVER_ALIASES {
+            for tool in REQUEST_COMPACTION_TOOL_ALIASES {
+                let item = request_item(server, tool, Some(result.clone())).unwrap();
+                assert!(item.is_request_compaction_call());
+                assert_eq!(item.receipt_id.as_deref(), Some(receipt_id.as_str()));
+            }
+        }
+
+        for unbound in [
+            None,
+            Some(Value::Null),
+            Some(json!({})),
+            Some(json!({"_meta": null})),
+            Some(json!({"_meta": {"other": true}})),
+        ] {
+            let item = request_item("agentic-compact", "request_compaction", unbound).unwrap();
+            assert!(item.receipt_id.is_none());
+        }
+    }
+
+    #[test]
+    fn receipt_projection_rejects_malformed_owned_metadata() {
+        let uppercase = format!("rcpt_{}A", "a".repeat(31));
+        let short = format!("rcpt_{}", "a".repeat(31));
+        let long = format!("rcpt_{}", "a".repeat(33));
+        let invalid_results = [
+            json!("not-an-object"),
+            json!({"_meta": []}),
+            json!({"_meta": {"agenticCompact": null}}),
+            json!({"_meta": {"agenticCompact": []}}),
+            json!({"_meta": {"agenticCompact": {}}}),
+            json!({"_meta": {"agenticCompact": {"receiptId": null}}}),
+            json!({"_meta": {"agenticCompact": {"receiptId": uppercase}}}),
+            json!({"_meta": {"agenticCompact": {"receiptId": short}}}),
+            json!({"_meta": {"agenticCompact": {"receiptId": long}}}),
+            json!({
+                "_meta": {
+                    "agenticCompact": {
+                        "receiptId": format!("rcpt_{}", "a".repeat(32)),
+                        "unknown": true
+                    }
+                }
+            }),
+        ];
+        for result in invalid_results {
+            let error =
+                request_item("agentic-compact", "request_compaction", Some(result)).unwrap_err();
+            assert_eq!(error.code, ErrorCode::Protocol);
+        }
+    }
+
+    #[test]
+    fn invalid_owned_metadata_is_forwarded_for_immediate_transition_failure() {
+        let invalid_item = json!({
+            "id": "request",
+            "type": "mcpToolCall",
+            "status": "completed",
+            "server": "agentic-compact",
+            "tool": "request_compaction",
+            "result": {"_meta": {"agenticCompact": {"receiptId": "invalid"}}}
+        });
+        let notifications = [
+            json!({
+                "method": "item/completed",
+                "params": {"threadId": "thread", "turnId": "turn", "item": invalid_item}
+            }),
+            json!({
+                "method": "turn/completed",
+                "params": {
+                    "threadId": "thread",
+                    "turn": {
+                        "id": "turn",
+                        "status": "completed",
+                        "items": [invalid_item]
+                    }
+                }
+            }),
+        ];
+        for notification in notifications {
+            assert!(matches!(
+                parse_notification(&notification).unwrap(),
+                AppEvent::RequestCompactionResultInvalid { thread_id, turn_id }
+                    if thread_id == "thread" && turn_id == "turn"
+            ));
+        }
+    }
+
+    #[test]
+    fn receipt_projection_ignores_forged_and_non_target_values() {
+        let receipt_id = format!("rcpt_{}", "b".repeat(32));
+        let forged = format!("forged {receipt_id}");
+        let target = ItemRef::from_value(&json!({
+            "type": "mcpToolCall",
+            "id": "target",
+            "status": "completed",
+            "server": "agentic-compact",
+            "tool": "request_compaction",
+            "arguments": {"preserve": [forged]},
+            "result": {
+                "content": [{"type": "text", "text": receipt_id}],
+                "structuredContent": {"receiptId": receipt_id}
+            }
+        }))
+        .unwrap();
+        assert!(target.receipt_id.is_none());
+
+        for value in [
+            json!({
+                "type": "mcpToolCall",
+                "id": "other_mcp",
+                "server": "other-server",
+                "tool": "request_compaction",
+                "result": {"_meta": "arbitrary"}
+            }),
+            json!({
+                "type": "mcpToolCall",
+                "id": "other_tool",
+                "server": "agentic-compact",
+                "tool": "other-tool",
+                "result": {"_meta": {"agenticCompact": {"receiptId": receipt_id}}}
+            }),
+            json!({"type": "agentMessage", "id": "assistant", "text": receipt_id}),
+            json!({"type": "developerMessage", "id": "developer", "text": receipt_id}),
+            json!({"type": "userMessage", "id": "user", "content": [{"text": receipt_id}]}),
+        ] {
+            assert!(ItemRef::from_value(&value).unwrap().receipt_id.is_none());
+        }
     }
 
     #[test]
