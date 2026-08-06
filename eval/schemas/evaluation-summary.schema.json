@@ -1,0 +1,580 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "nullableSha256": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/sha256"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "counter": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "nullableCounter": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/counter"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullableNumber": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "tokenTotals": {
+      "type": "object",
+      "required": ["inputTokens", "cachedInputTokens", "cacheWriteTokens", "outputTokens", "reasoningOutputTokens", "nonCachedInputTokens", "blendedTokens"],
+      "properties": {
+        "inputTokens": {"$ref": "#/$defs/counter"},
+        "cachedInputTokens": {"$ref": "#/$defs/counter"},
+        "cacheWriteTokens": {"$ref": "#/$defs/counter"},
+        "outputTokens": {"$ref": "#/$defs/counter"},
+        "reasoningOutputTokens": {"$ref": "#/$defs/counter"},
+        "nonCachedInputTokens": {"$ref": "#/$defs/counter"},
+        "blendedTokens": {"$ref": "#/$defs/counter"}
+      },
+      "additionalProperties": false
+    },
+    "tokenDelta": {
+      "type": "object",
+      "required": ["inputTokens", "cachedInputTokens", "cacheWriteTokens", "outputTokens", "reasoningOutputTokens", "nonCachedInputTokens", "blendedTokens"],
+      "properties": {
+        "inputTokens": {"type": "number"},
+        "cachedInputTokens": {"type": "number"},
+        "cacheWriteTokens": {"type": "number"},
+        "outputTokens": {"type": "number"},
+        "reasoningOutputTokens": {"type": "number"},
+        "nonCachedInputTokens": {"type": "number"},
+        "blendedTokens": {"type": "number"}
+      },
+      "additionalProperties": false
+    },
+    "tokenRatio": {
+      "type": "object",
+      "required": ["inputTokens", "cachedInputTokens", "cacheWriteTokens", "outputTokens", "reasoningOutputTokens", "nonCachedInputTokens", "blendedTokens"],
+      "properties": {
+        "inputTokens": {"$ref": "#/$defs/nullableNumber"},
+        "cachedInputTokens": {"$ref": "#/$defs/nullableNumber"},
+        "cacheWriteTokens": {"$ref": "#/$defs/nullableNumber"},
+        "outputTokens": {"$ref": "#/$defs/nullableNumber"},
+        "reasoningOutputTokens": {"$ref": "#/$defs/nullableNumber"},
+        "nonCachedInputTokens": {"$ref": "#/$defs/nullableNumber"},
+        "blendedTokens": {"$ref": "#/$defs/nullableNumber"}
+      },
+      "additionalProperties": false
+    },
+    "armAggregate": {
+      "type": "object",
+      "required": ["tokens", "benchmarkScoreMean", "solvedRuns", "wallTimeMs", "contextUsage"],
+      "properties": {
+        "tokens": {"$ref": "#/$defs/tokenTotals"},
+        "benchmarkScoreMean": {"type": "number", "minimum": 0, "maximum": 1},
+        "solvedRuns": {"$ref": "#/$defs/counter"},
+        "wallTimeMs": {"$ref": "#/$defs/counter"},
+        "contextUsage": {"$ref": "#/$defs/contextAggregate"}
+      },
+      "additionalProperties": false
+    },
+    "armDelta": {
+      "type": "object",
+      "required": ["tokens", "benchmarkScoreMean", "solvedRuns", "wallTimeMs", "contextUsage"],
+      "properties": {
+        "tokens": {"$ref": "#/$defs/tokenDelta"},
+        "benchmarkScoreMean": {"type": "number"},
+        "solvedRuns": {"type": "number"},
+        "wallTimeMs": {"type": "number"},
+        "contextUsage": {"$ref": "#/$defs/contextDelta"}
+      },
+      "additionalProperties": false
+    },
+    "armRatio": {
+      "type": "object",
+      "required": ["tokens", "benchmarkScoreMean", "wallTimeMs", "contextUsage"],
+      "properties": {
+        "tokens": {"$ref": "#/$defs/tokenRatio"},
+        "benchmarkScoreMean": {"$ref": "#/$defs/nullableNumber"},
+        "wallTimeMs": {"type": "number", "minimum": 0},
+        "contextUsage": {"$ref": "#/$defs/contextRatio"}
+      },
+      "additionalProperties": false
+    },
+    "contextAggregate": {
+      "type": "object",
+      "required": ["tokenUsageSamples", "modelContextWindow", "meanInputTokensPerSample", "peakInputTokens", "peakWindowUtilization"],
+      "properties": {
+        "tokenUsageSamples": {"$ref": "#/$defs/counter"},
+        "modelContextWindow": {"$ref": "#/$defs/counter"},
+        "meanInputTokensPerSample": {"type": "number", "minimum": 0},
+        "peakInputTokens": {"$ref": "#/$defs/counter"},
+        "peakWindowUtilization": {"type": "number", "minimum": 0, "maximum": 1}
+      },
+      "additionalProperties": false
+    },
+    "contextDelta": {
+      "type": "object",
+      "required": ["tokenUsageSamples", "meanInputTokensPerSample", "peakInputTokens", "peakWindowUtilization"],
+      "properties": {
+        "tokenUsageSamples": {"type": "number"},
+        "meanInputTokensPerSample": {"type": "number"},
+        "peakInputTokens": {"type": "number"},
+        "peakWindowUtilization": {"type": "number"}
+      },
+      "additionalProperties": false
+    },
+    "contextRatio": {
+      "type": "object",
+      "required": ["tokenUsageSamples", "meanInputTokensPerSample", "peakInputTokens", "peakWindowUtilization"],
+      "properties": {
+        "tokenUsageSamples": {"type": "number", "minimum": 0},
+        "meanInputTokensPerSample": {"type": "number", "minimum": 0},
+        "peakInputTokens": {"type": "number", "minimum": 0},
+        "peakWindowUtilization": {"type": "number", "minimum": 0}
+      },
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "stage",
+    "candidateCommit",
+    "provenance",
+    "runtime",
+    "counts",
+    "invalidReasons",
+    "gates",
+    "diagnostics",
+    "unavailableMetrics",
+    "overallPass"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "stage": {
+      "const": "stage-b"
+    },
+    "candidateCommit": {
+      "$ref": "#/$defs/commit"
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "binarySha256",
+        "pluginSha256",
+        "surfaceSha256",
+        "capabilityRecordSha256",
+        "configSha256",
+        "taskManifestSha256",
+        "judgeConfigSha256",
+        "codexBinarySha256",
+        "resultSetSha256"
+      ],
+      "properties": {
+        "binarySha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "pluginSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "surfaceSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "capabilityRecordSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "configSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "taskManifestSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "judgeConfigSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "codexBinarySha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "resultSetSha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "additionalProperties": false
+    },
+    "runtime": {
+      "type": "object",
+      "required": [
+        "codexVersion",
+        "model",
+        "reasoningEffort",
+        "serviceTier",
+        "sandboxMode",
+        "approvalPolicy"
+      ],
+      "properties": {
+        "codexVersion": {
+          "const": "0.146.0"
+        },
+        "model": {
+          "const": "gpt-5.6-luna"
+        },
+        "reasoningEffort": {
+          "const": "high"
+        },
+        "serviceTier": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "sandboxMode": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "approvalPolicy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[a-z][a-z0-9-]*$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "counts": {
+      "type": "object",
+      "required": [
+        "heldOutTasks",
+        "validRuns",
+        "invalidAttempts",
+        "invalidBlocks",
+        "validPairedBlocks",
+        "annotations",
+        "doubleReviewedAnnotations",
+        "judgeDisagreements",
+        "systematicNewFailureClasses"
+      ],
+      "properties": {
+        "heldOutTasks": {
+          "$ref": "#/$defs/counter"
+        },
+        "validRuns": {
+          "$ref": "#/$defs/counter"
+        },
+        "invalidAttempts": {
+          "$ref": "#/$defs/counter"
+        },
+        "invalidBlocks": {
+          "$ref": "#/$defs/counter"
+        },
+        "validPairedBlocks": {
+          "$ref": "#/$defs/counter"
+        },
+        "annotations": {
+          "$ref": "#/$defs/counter"
+        },
+        "doubleReviewedAnnotations": {
+          "$ref": "#/$defs/counter"
+        },
+        "judgeDisagreements": {
+          "$ref": "#/$defs/counter"
+        },
+        "systematicNewFailureClasses": {
+          "$ref": "#/$defs/counter"
+        }
+      },
+      "additionalProperties": false
+    },
+    "invalidReasons": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "required": [
+          "reason",
+          "count"
+        ],
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "count": {
+            "$ref": "#/$defs/counter"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "gates": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "numerator",
+          "denominator",
+          "estimate",
+          "lowerBound",
+          "upperBound",
+          "status",
+          "reason"
+        ],
+        "properties": {
+          "name": {
+            "enum": [
+              "absolute-safety",
+              "quality-solved-deficit",
+              "quality-observed-difference",
+              "quality-bootstrap-lower-bound",
+              "systematic-new-failure",
+              "compact-subset-support",
+              "compact-subset-point",
+              "compact-subset-upper-bound",
+              "overall-blended-token-ratio",
+              "overall-wall-time-ratio",
+              "harmful-trigger-support",
+              "harmful-trigger-rate",
+              "repeated-settled-phase-support",
+              "repeated-settled-phase-rate",
+              "critical-checkpoint-contradiction",
+              "critical-omission-support",
+              "critical-omission-rate",
+              "next-action-support",
+              "next-action-actionable",
+              "host-evidence-recall",
+              "judge-agreement"
+            ]
+          },
+          "numerator": {
+            "$ref": "#/$defs/nullableCounter"
+          },
+          "denominator": {
+            "$ref": "#/$defs/nullableCounter"
+          },
+          "estimate": {
+            "$ref": "#/$defs/nullableNumber"
+          },
+          "lowerBound": {
+            "$ref": "#/$defs/nullableNumber"
+          },
+          "upperBound": {
+            "$ref": "#/$defs/nullableNumber"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "fail",
+              "unavailable",
+              "inconclusive",
+              "diagnostic"
+            ]
+          },
+          "reason": {
+            "enum": [
+              "threshold_met",
+              "threshold_exceeded",
+              "insufficient_support",
+              "unavailable",
+              "zero_violations",
+              "violations_present",
+              "diagnostic_only"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "diagnostics": {
+      "type": "object",
+      "required": [
+        "qualityDifference",
+        "qualityLowerBound",
+        "qualityUpperBound",
+        "mcnemarB",
+        "mcnemarC",
+        "mcnemarPValue",
+        "compactSubsetTaskCount",
+        "compactSubsetMedian",
+        "compactSubsetUpperBound",
+        "blendedTokenRatio",
+        "medianWallRatio",
+        "harmfulTriggerRate",
+        "repeatedSettledPhaseRate",
+        "criticalOmissionRate",
+        "actionableNextActionRate",
+        "hostEvidenceRecall",
+        "judgeAgreement",
+        "compactionAccounting",
+        "armComparison"
+      ],
+      "properties": {
+        "qualityDifference": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "qualityLowerBound": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "qualityUpperBound": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "mcnemarB": {
+          "$ref": "#/$defs/counter"
+        },
+        "mcnemarC": {
+          "$ref": "#/$defs/counter"
+        },
+        "mcnemarPValue": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "compactSubsetTaskCount": {
+          "$ref": "#/$defs/counter"
+        },
+        "compactSubsetMedian": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "compactSubsetUpperBound": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "blendedTokenRatio": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "medianWallRatio": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "harmfulTriggerRate": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "repeatedSettledPhaseRate": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "criticalOmissionRate": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "actionableNextActionRate": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "hostEvidenceRecall": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "judgeAgreement": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "armComparison": {
+          "type": "object",
+          "required": ["runCount", "stock", "agenticCompact", "delta", "ratio"],
+          "properties": {
+            "runCount": {"$ref": "#/$defs/counter"},
+            "stock": {"$ref": "#/$defs/armAggregate"},
+            "agenticCompact": {"$ref": "#/$defs/armAggregate"},
+            "delta": {"$ref": "#/$defs/armDelta"},
+            "ratio": {"$ref": "#/$defs/armRatio"}
+          },
+          "additionalProperties": false
+        },
+        "compactionAccounting": {
+          "type": "object",
+          "required": [
+            "stockNative",
+            "candidateProactive",
+            "candidateResidualNative"
+          ],
+          "properties": {
+            "stockNative": {
+              "type": "object",
+              "required": ["compactions", "tasks"],
+              "properties": {
+                "compactions": {"$ref": "#/$defs/counter"},
+                "tasks": {"$ref": "#/$defs/counter"}
+              },
+              "additionalProperties": false
+            },
+            "candidateProactive": {
+              "type": "object",
+              "required": [
+                "requests",
+                "requestTasks",
+                "scheduledRequests",
+                "transitions",
+                "transitionTasks",
+                "measuredTransitions",
+                "preCompactionInputTokens",
+                "postCompactionInputTokens",
+                "activeInputTokensRemoved",
+                "postToPreInputRatio"
+              ],
+              "properties": {
+                "requests": {"$ref": "#/$defs/counter"},
+                "requestTasks": {"$ref": "#/$defs/counter"},
+                "scheduledRequests": {"$ref": "#/$defs/counter"},
+                "transitions": {"$ref": "#/$defs/counter"},
+                "transitionTasks": {"$ref": "#/$defs/counter"},
+                "measuredTransitions": {"$ref": "#/$defs/counter"},
+                "preCompactionInputTokens": {"$ref": "#/$defs/counter"},
+                "postCompactionInputTokens": {"$ref": "#/$defs/counter"},
+                "activeInputTokensRemoved": {"type": "number"},
+                "postToPreInputRatio": {"$ref": "#/$defs/nullableNumber"}
+              },
+              "additionalProperties": false
+            },
+            "candidateResidualNative": {
+              "type": "object",
+              "required": ["compactions", "tasks"],
+              "properties": {
+                "compactions": {"$ref": "#/$defs/counter"},
+                "tasks": {"$ref": "#/$defs/counter"}
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "unavailableMetrics": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64,
+        "pattern": "^[a-z][a-z0-9_-]*$"
+      }
+    },
+    "overallPass": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false
+}

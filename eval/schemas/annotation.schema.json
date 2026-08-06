@@ -1,0 +1,287 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "nullableSha256": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/sha256"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "opaqueId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "label": {
+      "enum": [
+        "KEEP",
+        "DELETE",
+        "INSERT",
+        "MOVE_EARLIER",
+        "REPAIR"
+      ]
+    },
+    "nullableLabel": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/label"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullableBoolean": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullablePhase": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "anchor": {
+      "type": "object",
+      "required": [
+        "kind",
+        "turnHash",
+        "itemHash",
+        "position"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "actual-request",
+            "missing-boundary",
+            "preferred-boundary",
+            "checkpoint",
+            "continuation"
+          ]
+        },
+        "turnHash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "itemHash": {
+          "$ref": "#/$defs/nullableSha256"
+        },
+        "position": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "annotationId",
+    "runId",
+    "taskId",
+    "candidateCommit",
+    "contextRegime",
+    "arm",
+    "stream",
+    "repetition",
+    "ordinal",
+    "sourceAnchor",
+    "preferredAnchor",
+    "primary",
+    "secondary",
+    "adjudicated",
+    "final",
+    "doubleReviewed",
+    "promptSha256",
+    "judgeConfigSha256",
+    "attributes",
+    "taxonomy",
+    "rationale",
+    "rawBundleAvailable"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "annotationId": {
+      "$ref": "#/$defs/sha256"
+    },
+    "runId": {
+      "$ref": "#/$defs/sha256"
+    },
+    "taskId": {
+      "$ref": "#/$defs/opaqueId"
+    },
+    "candidateCommit": {
+      "$ref": "#/$defs/commit"
+    },
+    "contextRegime": {
+      "enum": [
+        "fixed-fallback",
+        "no-forced"
+      ]
+    },
+    "arm": {
+      "enum": [
+        "stock",
+        "surface-sham",
+        "v0.1",
+        "v0.2"
+      ]
+    },
+    "stream": {
+      "enum": [
+        "trigger",
+        "checkpoint",
+        "continuation"
+      ]
+    },
+    "repetition": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3
+    },
+    "ordinal": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "sourceAnchor": {
+      "$ref": "#/$defs/anchor"
+    },
+    "preferredAnchor": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/anchor"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "primary": {
+      "$ref": "#/$defs/label"
+    },
+    "secondary": {
+      "$ref": "#/$defs/nullableLabel"
+    },
+    "adjudicated": {
+      "$ref": "#/$defs/nullableLabel"
+    },
+    "final": {
+      "$ref": "#/$defs/label"
+    },
+    "doubleReviewed": {
+      "type": "boolean"
+    },
+    "promptSha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "judgeConfigSha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "attributes": {
+      "type": "object",
+      "required": [
+        "phaseBefore",
+        "phaseAfter",
+        "substantialWorkRemaining",
+        "stateStable",
+        "activeWork",
+        "recentCompaction",
+        "criticalContradiction",
+        "criticalOmission",
+        "nextActionActionable",
+        "hostEvidenceMatch",
+        "repeatedSettledPhase"
+      ],
+      "properties": {
+        "phaseBefore": {
+          "$ref": "#/$defs/nullablePhase"
+        },
+        "phaseAfter": {
+          "$ref": "#/$defs/nullablePhase"
+        },
+        "substantialWorkRemaining": {
+          "$ref": "#/$defs/nullableBoolean"
+        },
+        "stateStable": {
+          "$ref": "#/$defs/nullableBoolean"
+        },
+        "activeWork": {
+          "$ref": "#/$defs/nullableBoolean"
+        },
+        "recentCompaction": {
+          "$ref": "#/$defs/nullableBoolean"
+        },
+        "criticalContradiction": {
+          "$ref": "#/$defs/nullableBoolean"
+        },
+        "criticalOmission": {
+          "$ref": "#/$defs/nullableBoolean"
+        },
+        "nextActionActionable": {
+          "$ref": "#/$defs/nullableBoolean"
+        },
+        "hostEvidenceMatch": {
+          "$ref": "#/$defs/nullableBoolean"
+        },
+        "repeatedSettledPhase": {
+          "$ref": "#/$defs/nullableBoolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "taxonomy": {
+      "anyOf": [
+        {
+          "enum": [
+            "harmful_trigger",
+            "missed_boundary",
+            "late_boundary",
+            "critical_omission",
+            "repeated_settled_phase",
+            "non_actionable_next_action"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "rationale": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "rawBundleAvailable": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false
+}

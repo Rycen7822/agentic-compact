@@ -1,6 +1,8 @@
 /target/
 *.swp
 *.tmp
+*.pyc
+__pycache__/
 .DS_Store
 agentic-compact-*.zip
 /worknotes/
@@ -9,3 +11,5 @@ agentic-compact-*.zip
 /handoff.md
 /docs/DEVELOPMENT_PLAN.md
 /docs/evidence/
+/eval/raw/
+/eval/results/

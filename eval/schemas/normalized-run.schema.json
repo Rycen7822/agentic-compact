@@ -1,0 +1,614 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "nullableSha256": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/sha256"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "opaqueId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "counter": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "runId",
+    "taskId",
+    "benchmark",
+    "arm",
+    "repetition",
+    "attempt",
+    "priorInvalidBlocks",
+    "candidateCommit",
+    "configHashes",
+    "codexVersion",
+    "model",
+    "reasoningEffort",
+    "serviceTier",
+    "sandboxMode",
+    "approvalPolicy",
+    "contextRegime",
+    "resolvedContextLimit",
+    "benchmarkScore",
+    "solved",
+    "outcomeClass",
+    "failureClass",
+    "candidateCaused",
+    "failureReviewed",
+    "tokens",
+    "wallTimeMs",
+    "threadHash",
+    "observer",
+    "counters",
+    "rejections",
+    "transitions",
+    "safety",
+    "semanticAvailability",
+    "traceRef"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "runId": {
+      "$ref": "#/$defs/sha256"
+    },
+    "taskId": {
+      "$ref": "#/$defs/opaqueId"
+    },
+    "benchmark": {
+      "enum": [
+        "swe-bench-verified",
+        "long-range-controlled"
+      ]
+    },
+    "arm": {
+      "enum": [
+        "stock",
+        "surface-sham",
+        "v0.1",
+        "v0.2"
+      ]
+    },
+    "repetition": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3
+    },
+    "priorInvalidBlocks": {
+      "type": "array",
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "required": [
+          "reasonCode",
+          "count"
+        ],
+        "properties": {
+          "reasonCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "count": {
+            "$ref": "#/$defs/counter"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "candidateCommit": {
+      "$ref": "#/$defs/commit"
+    },
+    "configHashes": {
+      "type": "object",
+      "required": [
+        "binarySha256",
+        "pluginSha256",
+        "surfaceSha256",
+        "capabilityRecordSha256",
+        "configSha256",
+        "taskManifestSha256",
+        "codexBinarySha256"
+      ],
+      "properties": {
+        "binarySha256": {
+          "$ref": "#/$defs/nullableSha256"
+        },
+        "pluginSha256": {
+          "$ref": "#/$defs/nullableSha256"
+        },
+        "surfaceSha256": {
+          "$ref": "#/$defs/nullableSha256"
+        },
+        "capabilityRecordSha256": {
+          "$ref": "#/$defs/nullableSha256"
+        },
+        "configSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "taskManifestSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "codexBinarySha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "additionalProperties": false
+    },
+    "codexVersion": {
+      "const": "0.146.0"
+    },
+    "model": {
+      "const": "gpt-5.6-luna"
+    },
+    "reasoningEffort": {
+      "const": "high"
+    },
+    "serviceTier": {
+      "$ref": "#/$defs/opaqueId"
+    },
+    "sandboxMode": {
+      "$ref": "#/$defs/opaqueId"
+    },
+    "approvalPolicy": {
+      "$ref": "#/$defs/opaqueId"
+    },
+    "contextRegime": {
+      "enum": [
+        "fixed-fallback",
+        "no-forced"
+      ]
+    },
+    "resolvedContextLimit": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "benchmarkScore": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "solved": {
+      "type": "boolean"
+    },
+    "outcomeClass": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "failureClass": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "candidateCaused": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "failureReviewed": {
+      "type": "boolean"
+    },
+    "tokens": {
+      "type": "object",
+      "required": [
+        "inputTokens",
+        "cachedInputTokens",
+        "cacheWriteTokens",
+        "outputTokens",
+        "reasoningOutputTokens",
+        "nonCachedInputTokens",
+        "blendedTokens"
+      ],
+      "properties": {
+        "inputTokens": {
+          "$ref": "#/$defs/counter"
+        },
+        "cachedInputTokens": {
+          "$ref": "#/$defs/counter"
+        },
+        "cacheWriteTokens": {
+          "$ref": "#/$defs/counter"
+        },
+        "outputTokens": {
+          "$ref": "#/$defs/counter"
+        },
+        "reasoningOutputTokens": {
+          "$ref": "#/$defs/counter"
+        },
+        "nonCachedInputTokens": {
+          "$ref": "#/$defs/counter"
+        },
+        "blendedTokens": {
+          "$ref": "#/$defs/counter"
+        }
+      },
+      "additionalProperties": false
+    },
+    "wallTimeMs": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "threadHash": {
+      "$ref": "#/$defs/sha256"
+    },
+    "observer": {
+      "type": "object",
+      "required": [
+        "finalTokenUsagePresent",
+        "finalOutcomePresent",
+        "counterMonotonic",
+        "threadConsistent",
+        "targetThreadCount",
+        "tokenUsageSamples",
+        "peakActiveInputTokens",
+        "modelContextWindow",
+        "contextTelemetrySha256"
+      ],
+      "properties": {
+        "finalTokenUsagePresent": {
+          "type": "boolean"
+        },
+        "finalOutcomePresent": {
+          "type": "boolean"
+        },
+        "counterMonotonic": {
+          "type": "boolean"
+        },
+        "threadConsistent": {
+          "type": "boolean"
+        },
+        "targetThreadCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokenUsageSamples": {
+          "$ref": "#/$defs/counter"
+        },
+        "peakActiveInputTokens": {
+          "$ref": "#/$defs/counter"
+        },
+        "modelContextWindow": {
+          "$ref": "#/$defs/counter"
+        },
+        "contextTelemetrySha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "additionalProperties": false
+    },
+    "counters": {
+      "type": "object",
+      "required": [
+        "turnsStarted",
+        "itemsCompleted",
+        "toolItemsCompleted",
+        "contextCompactions",
+        "unattributedCompactions",
+        "agenticRequests",
+        "scheduledAgenticRequests",
+        "agenticTransitions"
+      ],
+      "properties": {
+        "turnsStarted": {
+          "$ref": "#/$defs/counter"
+        },
+        "itemsCompleted": {
+          "$ref": "#/$defs/counter"
+        },
+        "toolItemsCompleted": {
+          "$ref": "#/$defs/counter"
+        },
+        "contextCompactions": {
+          "$ref": "#/$defs/counter"
+        },
+        "unattributedCompactions": {
+          "$ref": "#/$defs/counter"
+        },
+        "agenticRequests": {
+          "$ref": "#/$defs/counter"
+        },
+        "scheduledAgenticRequests": {
+          "$ref": "#/$defs/counter"
+        },
+        "agenticTransitions": {
+          "$ref": "#/$defs/counter"
+        }
+      },
+      "additionalProperties": false
+    },
+    "rejections": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "required": [
+          "reasonCode",
+          "count"
+        ],
+        "properties": {
+          "reasonCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "count": {
+            "$ref": "#/$defs/counter"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "transitions": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "required": [
+          "ordinal",
+          "sourceTurnHash",
+          "sourceItemHash",
+          "sourcePosition",
+          "preCompactionInputTokens",
+          "preCompactionUsageEventHash",
+          "compactionTurnHash",
+          "compactionItemHash",
+          "compactionPosition",
+          "continuationTurnHash",
+          "continuationPosition",
+          "postCompactionInputTokens",
+          "postCompactionUsageEventHash",
+          "continuationKind",
+          "terminalState",
+          "journalSha256",
+          "checkpointSha256",
+          "continuityViewSha256",
+          "hostEvidenceMatch",
+          "processSurvived",
+          "sameThread",
+          "injectionCount",
+          "continuationCount"
+        ],
+        "properties": {
+          "ordinal": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sourceTurnHash": {
+            "$ref": "#/$defs/sha256"
+          },
+          "sourceItemHash": {
+            "$ref": "#/$defs/sha256"
+          },
+          "sourcePosition": {
+            "$ref": "#/$defs/counter"
+          },
+          "preCompactionInputTokens": {
+            "$ref": "#/$defs/counter"
+          },
+          "preCompactionUsageEventHash": {
+            "$ref": "#/$defs/sha256"
+          },
+          "compactionTurnHash": {
+            "$ref": "#/$defs/nullableSha256"
+          },
+          "compactionItemHash": {
+            "$ref": "#/$defs/nullableSha256"
+          },
+          "compactionPosition": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/counter"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "continuationTurnHash": {
+            "$ref": "#/$defs/nullableSha256"
+          },
+          "continuationPosition": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/counter"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "postCompactionInputTokens": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/counter"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "postCompactionUsageEventHash": {
+            "$ref": "#/$defs/nullableSha256"
+          },
+          "continuationKind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "auto",
+                  "user-wins"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "terminalState": {
+            "enum": [
+              "cooldown",
+              "cancelled",
+              "failed"
+            ]
+          },
+          "journalSha256": {
+            "$ref": "#/$defs/sha256"
+          },
+          "checkpointSha256": {
+            "$ref": "#/$defs/nullableSha256"
+          },
+          "continuityViewSha256": {
+            "$ref": "#/$defs/nullableSha256"
+          },
+          "hostEvidenceMatch": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "processSurvived": {
+            "type": "boolean"
+          },
+          "sameThread": {
+            "type": "boolean"
+          },
+          "injectionCount": {
+            "$ref": "#/$defs/counter"
+          },
+          "continuationCount": {
+            "$ref": "#/$defs/counter"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "safety": {
+      "type": "object",
+      "required": [
+        "duplicateCompactions",
+        "crossThreadActions",
+        "syntheticUserMessages",
+        "lostCheckpoints",
+        "duplicateCheckpoints",
+        "unsafeActiveWorkTransitions",
+        "blindMutationRetries",
+        "tuiThreadPageSwitches",
+        "resourceLeaks",
+        "userWinsFailures",
+        "processSurvivalFailures",
+        "atMostOnceFailures"
+      ],
+      "properties": {
+        "duplicateCompactions": {
+          "$ref": "#/$defs/counter"
+        },
+        "crossThreadActions": {
+          "$ref": "#/$defs/counter"
+        },
+        "syntheticUserMessages": {
+          "$ref": "#/$defs/counter"
+        },
+        "lostCheckpoints": {
+          "$ref": "#/$defs/counter"
+        },
+        "duplicateCheckpoints": {
+          "$ref": "#/$defs/counter"
+        },
+        "unsafeActiveWorkTransitions": {
+          "$ref": "#/$defs/counter"
+        },
+        "blindMutationRetries": {
+          "$ref": "#/$defs/counter"
+        },
+        "tuiThreadPageSwitches": {
+          "$ref": "#/$defs/counter"
+        },
+        "resourceLeaks": {
+          "$ref": "#/$defs/counter"
+        },
+        "userWinsFailures": {
+          "$ref": "#/$defs/counter"
+        },
+        "processSurvivalFailures": {
+          "$ref": "#/$defs/counter"
+        },
+        "atMostOnceFailures": {
+          "$ref": "#/$defs/counter"
+        }
+      },
+      "additionalProperties": false
+    },
+    "semanticAvailability": {
+      "type": "object",
+      "required": [
+        "trigger",
+        "checkpoint",
+        "continuation"
+      ],
+      "properties": {
+        "trigger": {
+          "type": "boolean"
+        },
+        "checkpoint": {
+          "type": "boolean"
+        },
+        "continuation": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "traceRef": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "additionalProperties": false
+}

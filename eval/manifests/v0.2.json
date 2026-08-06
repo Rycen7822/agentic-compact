@@ -1,0 +1,1048 @@
+{
+  "corpusProvenanceSha256": "1572d1a100b5c40da2f2ea45befe59341b26629632d9b03e969e00bec263b871",
+  "judge": {
+    "backendId": "codex-app-server-v2-openai",
+    "calibrationExamplesSha256": "d346069ed8eaec79eb3e266f149343109bc97a1ff3992acc8dc7615ed3c8b02e",
+    "doubleReviewRate": 0.1,
+    "judgeConfigSha256": "abb55161462db3bb637c85279aee984755c5e2bd34945a222e5e2e2e75a2ba97",
+    "minimumAgreement": 0.9,
+    "modelRevision": "gpt-5.6-sol",
+    "promptSha256": {
+      "checkpoint": "911185772ef1308c29a7fcc6302d37fb6d7b16c6b9c7154eeb91a857e8905912",
+      "continuation": "b4bf16333ebf85c677885c62a618e280b109cd0216120c040619c2a5bf576fe8",
+      "trigger": "cf119c0dd9c0b890450afb5b7b70a943606c7e5408ee13decd96172d45b8b74c"
+    },
+    "settingsSha256": "8f7dec50ffa0d64e9f625d28b59f5c08b93bc0d53b5151e8c55b89cb9e803d07"
+  },
+  "manifestId": "agentic-compact-v0.2",
+  "runtime": {
+    "approvalPolicy": "never",
+    "codexBinarySha256": "2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+    "codexVersion": "0.146.0",
+    "dependencyCacheSha256": "816615a8bacd5bef81a03255b9a5524ce561c467eff485dc8056afded128e483",
+    "environmentSha256": "cc68872ced18ba48f920090055889ee2b7846ade1854e306eccadb63448616b8",
+    "fixedFallbackLimit": 49152,
+    "model": "gpt-5.6-luna",
+    "noForcedLimit": 232560,
+    "reasoningEffort": "high",
+    "runtimeConfigSha256": "8df16cb4cb6a8d35e71b3add6e99204d8cd895110ba16efd5e752a4cd0253316",
+    "sandboxMode": "workspace-write",
+    "serviceTier": "priority",
+    "targetContextWindow": 258400
+  },
+  "schemaVersion": 1,
+  "seeds": {
+    "armOrderSeed": 11,
+    "bootstrapSeed": 13,
+    "judgeSamplingSeed": 17
+  },
+  "selectionRule": "reset2-swe-v1:native15:heldsemantic20:held50:devsemantic20",
+  "tasks": [
+    {
+      "baseCommit": "1a4462d72eb03f30dc83a879b1dd57aac8b2c18b",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "dev",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "cfa867f9016d1f5306bd0fb1e786bf117517d95c8fc3bb756e809f4083a30749",
+      "taskId": "astropy__astropy-14096"
+    },
+    {
+      "baseCommit": "9ffd4eae2ce7a7100c98f681e2b6ab818df384a4",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "dev",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "f5260eec4f4a7b1c5ac9c46dc36d20c45d23de86b53f6a0a1e1a20f38bcfdc17",
+      "taskId": "django__django-15563"
+    },
+    {
+      "baseCommit": "f0632c0fc7339f68e992ed63ae4cfac76cd41aad",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "dev",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "dfe7c292ab6f9c29cacc150ee62a1d71fbac158cb62b33783247069879ddb0bb",
+      "taskId": "matplotlib__matplotlib-21568"
+    },
+    {
+      "baseCommit": "6c38f68dae221e8cfc70c137974b8b88bd3baaab",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "dev",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "1a0e69b5edc4ebea17c473dbb9452c8d41915556450b85f53a50880aa9ec6efc",
+      "taskId": "sphinx-doc__sphinx-9602"
+    },
+    {
+      "baseCommit": "479939f8c65c8c2908bbedc959549a257a7c0b0b",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "dev",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "f9bb37c3d1d34dc8577a01ad2f4c82e334275ebac22a1c68ae800d561054e8c1",
+      "taskId": "sympy__sympy-12419"
+    },
+    {
+      "baseCommit": "b750a0e6ee76fb6b8a099a4d16ec51977be46bf6",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": false,
+      "role": "dev",
+      "selectionEvidence": [
+        "active-context-pressure",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "ee971c2bdd193058e465cb078b4647031f5c5de16536fbedd41247e6321dcc8b",
+      "taskId": "astropy__astropy-8872"
+    },
+    {
+      "baseCommit": "361bb8f786f112ee275be136795c0b1ecefff928",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "dev",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "3bd77f6998096294e534b902c20b74ee8c606af21f6e81c252175636d0668e82",
+      "taskId": "django__django-15252"
+    },
+    {
+      "baseCommit": "6091437be9776139d3672cde28a19cbe6c09dcd5",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "dev",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "a01ecf9e7c83b88080dd2e2403cd9cd152f345592d40f068d757661e778cb8ea",
+      "taskId": "matplotlib__matplotlib-24870"
+    },
+    {
+      "baseCommit": "f35d2a6cc726f97d0e859ca7a0e1729f7da8a6c8",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "dev",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "decb5c7e7b12142a91a2fac674381fb9e6900b77206d203e4eacc738c3aad2ae",
+      "taskId": "sphinx-doc__sphinx-10673"
+    },
+    {
+      "baseCommit": "701441853569d370506514083b995d11f9a130bd",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "dev",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "145025bf20d4a1b79a75c590621c5bea736172660d48206cbaabeac9e953033a",
+      "taskId": "sympy__sympy-15976"
+    },
+    {
+      "baseCommit": "a85a0747c54bac75e9c3b2fe436b105ea029d6cf",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": false,
+      "role": "dev",
+      "selectionEvidence": [
+        "active-context-pressure",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "50606c987ec80fa1b5d4637a3cacbc9af66cf596dfc160f702c0d041db1c086a",
+      "taskId": "astropy__astropy-8707"
+    },
+    {
+      "baseCommit": "d65c9ca20ddf81ef91199e6d819f9d3506ef477c",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": false,
+      "role": "dev",
+      "selectionEvidence": [
+        "active-context-pressure",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "bf2b2003db2e04be2bd77255eaffd227eef9b2e5ef34a0308d6d1e73b84613a2",
+      "taskId": "matplotlib__matplotlib-14623"
+    },
+    {
+      "baseCommit": "5e6da19f0e44a0ae83944fb6ce18f18f781e1a6e",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "dev",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "df076bee13eea1402cba90c3d057381c7dbecdde2638843d4a402809d913f071",
+      "taskId": "sphinx-doc__sphinx-8035"
+    },
+    {
+      "baseCommit": "84c125972ad535b2dfb245f8d311d347b45e5b8a",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": false,
+      "role": "dev",
+      "selectionEvidence": [
+        "active-context-pressure",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "c78e7805553aaa7c4af09b9a2761c1b0cafa4cad87570a1c2503d760e90b3160",
+      "taskId": "sympy__sympy-13974"
+    },
+    {
+      "baseCommit": "97fc1154992f64cfb2f86321155a7404efeb2d8a",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": false,
+      "role": "dev",
+      "selectionEvidence": [
+        "active-context-pressure",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "620ca8aafe15f2e8ce35b0dcbc82533243aa0f0d73f9e534acb0aad3d1cc0c69",
+      "taskId": "matplotlib__matplotlib-23314"
+    },
+    {
+      "baseCommit": "fdc707f73a65a429935c01532cd3970d3355eab6",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "dev",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "c627b305a0db0f3cb8c28bf7ac1539472d160f2253204d30d57fc3682d55f548",
+      "taskId": "sympy__sympy-23262"
+    },
+    {
+      "baseCommit": "1d0d255b79e84dfc9f2123c5eb85a842d342f72b",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "dev",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "bae763a6a268e6f9523832df834e92545525ed0bbcec2f6b5bcac85760bd08cd",
+      "taskId": "matplotlib__matplotlib-25960"
+    },
+    {
+      "baseCommit": "07983a5a8704ad91ae855218ecbda1c8598200ca",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "dev",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "e8b856792221c0b6d6ebe8f10347cca5172b3f06fee5c912143f91872f0bd697",
+      "taskId": "sphinx-doc__sphinx-8593"
+    },
+    {
+      "baseCommit": "55b68de643b5c2d5f0a8ea7587ab3b2966021ccc",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "dev",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "df5cf47039aebd09016b4fb65e89616efe2ee8b5db30e0f8d418033d52ac15e6",
+      "taskId": "django__django-11333"
+    },
+    {
+      "baseCommit": "26224d96066b5c60882296c551f54ca7732c0af0",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "dev",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "24083808616172377d72183344b0ddfb3c52b1c7ac1058d8db1d26bf06cff643",
+      "taskId": "matplotlib__matplotlib-25775"
+    },
+    {
+      "baseCommit": "aa55975c7d3f6c9f6d7f68accc41bb7cadf0eb9a",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": true,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "cf5496c9e748be12e62909fbf20a3f4bcbd1de8fd14e7009189933c5bd372a18",
+      "taskId": "pytest-dev__pytest-10051"
+    },
+    {
+      "baseCommit": "0192aac24123735b3eaf9b08df46429bb770c283",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": true,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "a6f45d9afd819a28cf4085674b320b6b10be83acf541841dc3fa571c7e915190",
+      "taskId": "psf__requests-6028"
+    },
+    {
+      "baseCommit": "b7ce415c15eb39b026a097a2865da73fbcf15c9c",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": true,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "46cfe32a78d5b22bc1324bbdbf63d50866f1004df6b2ddc37d6a60629a349006",
+      "taskId": "matplotlib__matplotlib-20488"
+    },
+    {
+      "baseCommit": "51d37d1be95547059251076b3fadaa317750aab3",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": true,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "726b39a7ae7227504e135734ecea02d02d9ce16a6a0a3a867373a36f9079e74d",
+      "taskId": "pydata__xarray-7233"
+    },
+    {
+      "baseCommit": "67d06b18c68ee4452768f8a1e868565dd4354abf",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": true,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "f52adf11e44628f73bbc600835aee111e221f3f91f11b9d119552094d1d7f68b",
+      "taskId": "scikit-learn__scikit-learn-10908"
+    },
+    {
+      "baseCommit": "57ed10c68057c96491acbd3e62254ccfaf9e3861",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": true,
+      "fallbackExposed": false,
+      "role": "held-out",
+      "selectionEvidence": [
+        "active-context-pressure",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "8d572706a8df505e682876df4775802e9372b0f5070da077d8c0062c72edcedb",
+      "taskId": "sphinx-doc__sphinx-8551"
+    },
+    {
+      "baseCommit": "22cdfb0c93f8ec78492d87edb810f10cb7f57a31",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": true,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "d7f8da1b862ed9c3ce5091a0fa88b45a84468a8a9ece0c841af4e6d4a7cc4dc4",
+      "taskId": "mwaskom__seaborn-3187"
+    },
+    {
+      "baseCommit": "1d1619ef913b99b06647d2030bddff4800abdf63",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": true,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "37e7da94193243d94c1b8327a2836878c8f4a2744058d53b07298e6f3ee81b9f",
+      "taskId": "pylint-dev__pylint-4661"
+    },
+    {
+      "baseCommit": "09786a173e7a0a488f46dd6000177c23e5d24eed",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": true,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "d5822d5f2670898af8ed17a471e74446c23c85d785b3f020761a71edb8f0f1fa",
+      "taskId": "sympy__sympy-16792"
+    },
+    {
+      "baseCommit": "a7141cd90019b62688d507ae056298507678c058",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": true,
+      "fallbackExposed": false,
+      "role": "held-out",
+      "selectionEvidence": [
+        "active-context-pressure",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "21af90cd10643a5c029454d58529efedf7a8dae0eb0d32a868a9043b944382d7",
+      "taskId": "astropy__astropy-7671"
+    },
+    {
+      "baseCommit": "257f8495d6c93e30ab0f52af4c488d7344bcf112",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": true,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "5d29b8bc22f5c36d67c19fa1ec6418a9429f97207b5c8d14c6a40f4b3416b0be",
+      "taskId": "django__django-13569"
+    },
+    {
+      "baseCommit": "6e7dc8bac831cd8cf7a53b08efa366bd84f0c0fe",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": true,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "8a6e2237ce8d786a23c3c9e6475d7c96697dbda289c07824cd43d7b9df961471",
+      "taskId": "pytest-dev__pytest-8399"
+    },
+    {
+      "baseCommit": "5f7a3a74aab1625c2bb65f643197ee885e3da576",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": true,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "849c7edcf581df437fe72cac477ae3d8b175b86fb63bc4a19c8b5946c2262af4",
+      "taskId": "psf__requests-2931"
+    },
+    {
+      "baseCommit": "f06c2c3abdaf4b90285ce5ca7fedbb8ace715911",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": true,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "0a108c022020e274ab23ef2652a1fec69511ab6f80dd03e50bdaa8f93cedc518",
+      "taskId": "matplotlib__matplotlib-23412"
+    },
+    {
+      "baseCommit": "7cc6cc991e586a6158bb656b8001234ccda25407",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": true,
+      "fallbackExposed": false,
+      "role": "held-out",
+      "selectionEvidence": [
+        "active-context-pressure",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "0b3e6fda148f1f22f5ba2e085fcda26f006514e89048d53c06f88c00ecfca4a9",
+      "taskId": "pydata__xarray-6744"
+    },
+    {
+      "baseCommit": "4aded39b5663d943f6a4809abacfa9cae3d7fb6a",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": true,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "7f823c4366c150eaf7339ac707e4231e52a29cc1a25d60a89751d0ce6bca5ce7",
+      "taskId": "scikit-learn__scikit-learn-14629"
+    },
+    {
+      "baseCommit": "795747bdb6b8fb7d717d5bbfc2c3316869e66a73",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": true,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "cbba4a014df6fd665673efe09a1d5f65656f87874e63fe1e628cf7caefb55ceb",
+      "taskId": "sphinx-doc__sphinx-8120"
+    },
+    {
+      "baseCommit": "54cab15bdacfaa05a88fbc5502a5b322d99f148e",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": true,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "0139e0ced839d1d35b47d5d66bc76345bae9b492e749d341844bf3db691fbcdc",
+      "taskId": "mwaskom__seaborn-3069"
+    },
+    {
+      "baseCommit": "754b487f4d892e3d4872b6fc7468a71db4e31c13",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": true,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "318ec101faab16db6143d9b7439f24b24f2d3617e13d1bfdc0504670645c8b36",
+      "taskId": "pylint-dev__pylint-6386"
+    },
+    {
+      "baseCommit": "b9179e80d2daa1bb6cba1ffe35ca9e6612e115c9",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": true,
+      "fallbackExposed": false,
+      "role": "held-out",
+      "selectionEvidence": [
+        "active-context-pressure",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "a6f5b5649f7b88f6a18237ffd9524ec78ef2738cd2a8f3b5cc3b22501543548f",
+      "taskId": "sympy__sympy-19040"
+    },
+    {
+      "baseCommit": "003bb34b218adb23d1a7e67932a6ba9b3c4dcc81",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "9dd1c4dd799b909899c2cc0fd121110ca65132aaf2edc64aff6f098fa109fcd3",
+      "taskId": "django__django-11740"
+    },
+    {
+      "baseCommit": "73c5b7f4b11a81e971f7d1bb18072e06a87060f4",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "5e34082e0ea53ed4b8398f570c3d438febb11a4dd1388bb4789c0984fb29c6f4",
+      "taskId": "pytest-dev__pytest-5840"
+    },
+    {
+      "baseCommit": "3eadeacc06c9f2ddcdac6ae39819faa9fbee9e39",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "d8bb4e5a89643e3353ccf4b7616259c51964b6d4fd344bd17e7edb952e20f238",
+      "taskId": "matplotlib__matplotlib-23299"
+    },
+    {
+      "baseCommit": "ef6e6a7b86f8479b9a1fecf15ad5b88a2326b31e",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "d4830d88c837b6c2f8de7dccb95dd0e9761c2a68f6481dc8f53d491912152a45",
+      "taskId": "pydata__xarray-3677"
+    },
+    {
+      "baseCommit": "fdbaa58acbead5a254f2e6d597dc1ab3b947f4c6",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "a3f70360e26c389fa1146770382a370548ce3b5a71be4d5748f7531f2442b138",
+      "taskId": "scikit-learn__scikit-learn-14894"
+    },
+    {
+      "baseCommit": "71db08c05197545944949d5aa76cd340e7143627",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "8cd2340046c6065fd46e11571cc0055db8aef66543a286420b43e3ae36c002b3",
+      "taskId": "sphinx-doc__sphinx-11445"
+    },
+    {
+      "baseCommit": "1e55ae64624d28c5fe8b63ad7979880ee2e6ef3f",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "505a06f1df31bc5e48e78950b4bd634299e691f332f44953e967ae8bb769094d",
+      "taskId": "pylint-dev__pylint-4604"
+    },
+    {
+      "baseCommit": "c0a24c1dc957a3b565294213f435fefb2ec99714",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "0fbd36c6e1e1c616c260a6913d176f2d40e0e6a953655e0547993fe7bdbae066",
+      "taskId": "astropy__astropy-14539"
+    },
+    {
+      "baseCommit": "f39634ff229887bf7790c069d0c411b38494ca38",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": false,
+      "role": "held-out",
+      "selectionEvidence": [
+        "active-context-pressure",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "608a218a04400f30fe174893e57b0e713993011b86aa9a512d6fbfffc198730a",
+      "taskId": "django__django-13964"
+    },
+    {
+      "baseCommit": "19ad5889353c7f5f2b65cc2acd346b7a9e95dfcd",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "c68f91cfeb5c821ee302bb0982024974cc0db5b5ebcdadcd1d1cc77dacacccbd",
+      "taskId": "pytest-dev__pytest-7324"
+    },
+    {
+      "baseCommit": "a3011dfd1aaa2487cce8aa7369475533133ef777",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": false,
+      "role": "held-out",
+      "selectionEvidence": [
+        "active-context-pressure",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "f7e709dbc72cebaf77256f5c44d6f2acffbc822991c4f7bb21ece8eed997360c",
+      "taskId": "matplotlib__matplotlib-24970"
+    },
+    {
+      "baseCommit": "a7b8b9e9e16d4e15fabda5ae615086c2e1c47d8a",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "69d44dbdd71db6fd9e3a10a7854d00cb9afcab2d42c753bcc14fb88b70878efb",
+      "taskId": "scikit-learn__scikit-learn-12973"
+    },
+    {
+      "baseCommit": "f30284ef926ebaf04b176f21b421e2dffc679792",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": false,
+      "role": "held-out",
+      "selectionEvidence": [
+        "active-context-pressure",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "2cc291b3d78a5047a04b01c20a47451e00c2197264b8901f35f7533e1acfbf35",
+      "taskId": "sphinx-doc__sphinx-7985"
+    },
+    {
+      "baseCommit": "d1320814eda6549996190618a21eaf212cfd4d1e",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "a8e530052f6ee340b5f0c0910b567703033726b114f6d2942384253a70324f92",
+      "taskId": "sympy__sympy-13091"
+    },
+    {
+      "baseCommit": "7269fa3e33e8d02485a647da91a5a2a60a06af61",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": false,
+      "role": "held-out",
+      "selectionEvidence": [
+        "active-context-pressure",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "a5431f66b6ee9e33ddf657fc8ceb6dd6afc6fdb033bc4ee5ff33199816968285",
+      "taskId": "astropy__astropy-14365"
+    },
+    {
+      "baseCommit": "02c356f2f3945b8075735d485c3cf48cad991011",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "4f121f18b37fb865a540d80f0f451b9b53a75bfe67c212aa7429a1d5d3f576c6",
+      "taskId": "django__django-16667"
+    },
+    {
+      "baseCommit": "422685d0bdc110547535036c1ff398b5e1c44145",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": false,
+      "role": "held-out",
+      "selectionEvidence": [
+        "active-context-pressure",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "4e76176940a781db555507ee22dbf29b06da72fa7601c5ae7acd8d7415c99ef3",
+      "taskId": "pytest-dev__pytest-7571"
+    },
+    {
+      "baseCommit": "c6c7ec1978c22ae2c704555a873d0ec6e1e2eaa8",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "bed5e2ae1aa60c5b2a4587552e4f7d2579a5c7d919b47f447b2faa67a02e32b4",
+      "taskId": "matplotlib__matplotlib-22865"
+    },
+    {
+      "baseCommit": "b90661d6a46aa3619d3eec94d5281f5888add501",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "5cc9898c2ba83e6d287ac8bca3812132bd0a6dbd4dcf4f1587f4ede77be7b1ee",
+      "taskId": "scikit-learn__scikit-learn-10297"
+    },
+    {
+      "baseCommit": "b428cd2404675475a5c3dc2a2b0790ba57676202",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "f9e5f01e03d76ce042a4057ba1599c4bd8c01f099203a1196696670b354a64eb",
+      "taskId": "sphinx-doc__sphinx-8265"
+    },
+    {
+      "baseCommit": "624217179aaf8d094e6ff75b7493ad1ee47599b0",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "fbe375817d0a48fc934871f68cd0c2330395c38290b077bfddffb88ea2339194",
+      "taskId": "sympy__sympy-21379"
+    },
+    {
+      "baseCommit": "d16bfe05a744909de4b27f5875fe0d4ed41ce607",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "daa5a6adde62aaa600b1733555aa9da04a75acd6ffb60a065c5057a2a7514d6b",
+      "taskId": "astropy__astropy-12907"
+    },
+    {
+      "baseCommit": "a7b7260bf06c20d408215d95ce20a1a01c12e5b1",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": false,
+      "role": "held-out",
+      "selectionEvidence": [
+        "active-context-pressure",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "e77dfafea0dd6a7529de96d98e33b79c2aafe0da004eba63692e4fd9e47392be",
+      "taskId": "matplotlib__matplotlib-22871"
+    },
+    {
+      "baseCommit": "e886ce4e1444c61b865e7839c9cff5464ee20ace",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "6d169363e7c0871a214d0eb8d7e90abe74d67fca20235bbbb39c2d76771a958b",
+      "taskId": "scikit-learn__scikit-learn-26194"
+    },
+    {
+      "baseCommit": "33b47e4bd60e2302e42616141e76285038b724d6",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "d08cf5d2fa3b7eacaab2379159030d2008f3902405abe1e9d262ba022145951d",
+      "taskId": "sympy__sympy-20438"
+    },
+    {
+      "baseCommit": "88e67a54b7ed0210c11523a337b498aadb2f5187",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "9a8b6fbb6b1f9b73946d41e76118cdc2dade37d13e947237b92d6d30a8b9f8e7",
+      "taskId": "django__django-15916"
+    },
+    {
+      "baseCommit": "3dd06a46750d174f821df5377996f493f1af4ebb",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "22c3f0a1399f1292c523ba2df65fed550367a6fb98428fdd58a310768b47033f",
+      "taskId": "matplotlib__matplotlib-26466"
+    },
+    {
+      "baseCommit": "d360ffa7c5896a91ae498b3fb9cf464464ce8f34",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "e5150316b82f04f4e2f7d41aeaad98a3fd332e9717532821e33a5590cb241ff6",
+      "taskId": "scikit-learn__scikit-learn-12682"
+    },
+    {
+      "baseCommit": "5fb51fb1467dc5eea7505402c3c5d9b378d3b441",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "11ae4645674be4a50abb3f43c58962de2d75b31db64992e9556ceec0353524dd",
+      "taskId": "sphinx-doc__sphinx-9673"
+    },
+    {
+      "baseCommit": "67e3c956083d0128a621f65ee86a7dacd4f9f19f",
+      "benchmark": "swe-bench-verified",
+      "diagnosticSubset": false,
+      "fallbackExposed": true,
+      "role": "held-out",
+      "selectionEvidence": [
+        "native-fallback",
+        "semantic-bundle"
+      ],
+      "semanticBundleEligible": true,
+      "taskConfigSha256": "c9bd9e733763bde4dd8fac6a8b19d38934ac0b9a7a8bf52c16074b81d6e0b979",
+      "taskId": "sympy__sympy-13647"
+    }
+  ],
+  "thresholds": {
+    "bootstrapSamples": 10000,
+    "maximumBlendedTokenRatio": 1.03,
+    "maximumCompactSubsetMedian": 0.9,
+    "maximumCompactSubsetUpperBound": 0.97,
+    "maximumCriticalOmissionRate": 0.05,
+    "maximumHarmfulTriggerRate": 0.05,
+    "maximumMedianWallRatio": 1.1,
+    "maximumRepeatedSettledPhaseRate": 0.05,
+    "maximumSolvedTaskDeficit": 1,
+    "minimumActionableNextActionRate": 0.95,
+    "minimumCompactSubsetTasks": 15,
+    "minimumHostEvidenceRecall": 1.0,
+    "minimumObservedQualityDifference": -0.02,
+    "minimumPolicyRequests": 15,
+    "minimumPolicyTasks": 15,
+    "minimumQualityLowerBound": -0.1
+  },
+  "v01Baseline": {
+    "binarySha256": "cf52083b4be22620cc111717ccf6d1aa661431abe31c96c381da6cb60fc0c42f",
+    "capabilityRecordSha256": "d9d0e35ea0fa62b441b042a1e132fa7b899b4a0b3efa330e0d038b0c072d958b",
+    "pluginSha256": "a31172f467e6ccd4f19c358c9181c8f65ec463b77fd5f2ee8c64b55451da32f3",
+    "releaseTag": "v0.1.0",
+    "sourceCommit": "898061f019ddca8599debd7b15a204040bd6b349",
+    "surfaceSha256": "06213a3f9f3f696f05e6e6a7d76493de160d1831702d2c32837e6e19db536589"
+  }
+}
