@@ -2,15 +2,15 @@
   "corpusProvenanceSha256": "1572d1a100b5c40da2f2ea45befe59341b26629632d9b03e969e00bec263b871",
   "judge": {
     "backendId": "codex-app-server-v2-openai",
-    "calibrationExamplesSha256": "d346069ed8eaec79eb3e266f149343109bc97a1ff3992acc8dc7615ed3c8b02e",
+    "calibrationExamplesSha256": "95c2728b325e272cac7b90ae5f2238283c172825345c3ac70c89c1f7c35ee679",
     "doubleReviewRate": 0.1,
-    "judgeConfigSha256": "abb55161462db3bb637c85279aee984755c5e2bd34945a222e5e2e2e75a2ba97",
+    "judgeConfigSha256": "7957abb6521ed48203cb4328b88e352df46a76d8cc778dfe4affc1a175fb7b1e",
     "minimumAgreement": 0.9,
     "modelRevision": "gpt-5.6-sol",
     "promptSha256": {
       "checkpoint": "911185772ef1308c29a7fcc6302d37fb6d7b16c6b9c7154eeb91a857e8905912",
       "continuation": "b4bf16333ebf85c677885c62a618e280b109cd0216120c040619c2a5bf576fe8",
-      "trigger": "cf119c0dd9c0b890450afb5b7b70a943606c7e5408ee13decd96172d45b8b74c"
+      "trigger": "9f5759f1703833caac1d01e251bc46dc8be021d2af3d4218e4f6b6180e8777be"
     },
     "settingsSha256": "8f7dec50ffa0d64e9f625d28b59f5c08b93bc0d53b5151e8c55b89cb9e803d07"
   },

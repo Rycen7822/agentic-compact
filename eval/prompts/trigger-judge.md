@@ -6,6 +6,8 @@ Judge whether an Agentic Compact request occurred at the correct semantic bounda
 
 Input is one complete chronological raw trajectory with outcome and arm hidden. Return every actual `request_compaction` anchor, every clear omitted boundary, and an earlier preferred anchor for each late request. An anchor is the stable turn hash, item hash, and chronological position supplied by the adapter. Do not invent anchors or emit duplicates.
 
+An actual request must be an `mcpToolCall` to the Agentic Compact server and `request_compaction` tool. A `contextCompaction` item is native compaction and is never an actual request.
+
 Use a boundary only when the current phase has a decisive conclusion and substantial work remains in a different phase. Exploration without a conclusion, active edits, active verification, a recent compaction, or an unstable state is not a valid boundary.
 
 ## Score mode
