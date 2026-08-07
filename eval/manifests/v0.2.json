@@ -25,7 +25,7 @@
     "model": "gpt-5.6-luna",
     "noForcedLimit": 232560,
     "reasoningEffort": "high",
-    "runtimeConfigSha256": "2cbf4457c23564a30707025b1f36589ca1e7a226b62ba33e35c7e7f584b1b148",
+    "runtimeConfigSha256": "66b1c69baade355b78c5f2a1763dc3ab93fed3bd51c776cf868dccaadffb8b43",
     "sandboxMode": "workspace-write",
     "serviceTier": "priority",
     "targetContextWindow": 258400

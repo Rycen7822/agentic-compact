@@ -103,7 +103,7 @@ def verify(binary: Path) -> str:
     plugin = json.loads(PLUGIN_PATH.read_text(encoding="utf-8"))
 
     production = run_mcp([str(binary), "mcp"], isolated=True)
-    sham = run_mcp([sys.executable, str(SHAM_PATH)], isolated=False)
+    sham = run_mcp([sys.executable, str(SHAM_PATH), "mcp"], isolated=False)
     require(production == sham, "production and sham MCP surfaces differ")
 
     initialize = production[0]["result"]

@@ -146,11 +146,18 @@ def self_test() -> int:
     return 0
 
 
-def main() -> int:
+def main(arguments: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument("command", nargs="?", choices=("mcp",))
     parser.add_argument("--self-test", action="store_true")
-    args = parser.parse_args()
-    return self_test() if args.self_test else serve()
+    args = parser.parse_args(arguments)
+    if args.self_test:
+        if args.command is not None:
+            parser.error("--self-test cannot be combined with a command")
+        return self_test()
+    if args.command != "mcp":
+        parser.error("the mcp command is required")
+    return serve()
 
 
 if __name__ == "__main__":
