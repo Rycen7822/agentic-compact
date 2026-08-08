@@ -4,7 +4,7 @@
     "backendId": "codex-app-server-v2-openai",
     "calibrationExamplesSha256": "95c2728b325e272cac7b90ae5f2238283c172825345c3ac70c89c1f7c35ee679",
     "doubleReviewRate": 0.1,
-    "judgeConfigSha256": "7957abb6521ed48203cb4328b88e352df46a76d8cc778dfe4affc1a175fb7b1e",
+    "judgeConfigSha256": "e3c2a7d538f7f1d1720607f981dfd2b0a6e103b896a47c962a6d28874b2ded9e",
     "minimumAgreement": 0.9,
     "modelRevision": "gpt-5.6-sol",
     "promptSha256": {
