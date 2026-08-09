@@ -18,7 +18,7 @@
     "category": "Developer Tools",
     "capabilities": ["Context management"],
     "defaultPrompt": [
-      "Use Agentic Compact only at a settled phase boundary with substantial work left and stale exploration; never call during investigation, editing, testing, uncertainty, or merely for context length."
+      "Use Agentic Compact when diagnosis or research is settled, before substantial implementation or testing; never call during active work, uncertainty, or merely for context length."
     ]
   }
 }
