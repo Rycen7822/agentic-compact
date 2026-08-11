@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {"id":"p1-diagnosis-implementation","expectedClass":"positive","prompt":"You are midway through a long repository task. Diagnosis is complete: duplicate retries come from scheduler ownership, which must move into the scheduler. No command, edit, test, approval, or delegated task is active. Substantial implementation and verification remain. Continue autonomously with the next phase."},
+    {"id":"p2-research-implementation","expectedClass":"positive","prompt":"Research for a long integration task is complete. The supported API and failure semantics are settled, alternatives are ruled out, and no work is active. Substantial implementation, tests, and documentation remain. Continue autonomously with the next phase."},
+    {"id":"p3-implementation-verification","expectedClass":"positive","prompt":"The implementation phase of a long repository change is complete and has been reviewed. No command, edit, test, approval, or delegated task is active. Broad regression testing, performance checks, and documentation still remain. Continue autonomously with the next phase."},
+    {"id":"p4-replacement-route","expectedClass":"positive","prompt":"An initial approach in a long repository task has been conclusively disproved and abandoned. The replacement architecture is now settled, no work is active, and substantial implementation and verification remain. Continue autonomously with the replacement phase."},
+    {"id":"n1-unsettled-diagnosis","expectedClass":"negative","prompt":"The diagnosis is not settled. Two root causes still fit the evidence, a required log is missing, and the acceptance criteria may change. Continue investigating; do not begin implementation."},
+    {"id":"n2-active-work","expectedClass":"negative","prompt":"A repository edit and its long test command are still in progress, and a delegated review has not returned. Continue monitoring the active work and do not start a new phase."},
+    {"id":"n3-unstable-contract","expectedClass":"negative","prompt":"Research produced two viable APIs, but the owner has not chosen one and the acceptance criteria remain disputed. Compare the unresolved options and do not implement either."},
+    {"id":"n4-short-final","expectedClass":"negative","prompt":"All implementation, tests, performance checks, and documentation are complete. Only provide a concise two-sentence final summary to the user."}
+  ]
+}
