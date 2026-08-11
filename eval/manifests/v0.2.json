@@ -17,15 +17,15 @@
   "manifestId": "agentic-compact-v0.2",
   "runtime": {
     "approvalPolicy": "never",
-    "codexBinarySha256": "2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
-    "codexVersion": "0.146.0",
+    "codexBinarySha256": "cb0a15567e9a60a5820d54b0f6ae86d504dc3805c1eab21a47f70e3eb7b73a40",
+    "codexVersion": "0.147.0",
     "dependencyCacheSha256": "ba1a568eb447763333c2e7d46b5e6a1ee5359652ab50c18190f0de1ba43d691a",
     "environmentSha256": "cc68872ced18ba48f920090055889ee2b7846ade1854e306eccadb63448616b8",
     "fixedFallbackLimit": 49152,
     "model": "gpt-5.6-luna",
     "noForcedLimit": 232560,
     "reasoningEffort": "high",
-    "runtimeConfigSha256": "c5a66919b356bb8afaeab868efdf6ddea351c549a54a6073b727f750f3c75986",
+    "runtimeConfigSha256": "a82ca4e2f99749fd04cb67a6f2623ea87cdb6fdfeda7f6217afa2cef71556df6",
     "sandboxMode": "workspace-write",
     "serviceTier": "priority",
     "targetContextWindow": 258400
@@ -1039,7 +1039,7 @@
   },
   "v01Baseline": {
     "binarySha256": "cf52083b4be22620cc111717ccf6d1aa661431abe31c96c381da6cb60fc0c42f",
-    "capabilityRecordSha256": "d9d0e35ea0fa62b441b042a1e132fa7b899b4a0b3efa330e0d038b0c072d958b",
+    "capabilityRecordSha256": "a14f1a158706347374e2aa032070994c3fee529b95e716dc4d8dcde202ab8730",
     "pluginSha256": "a31172f467e6ccd4f19c358c9181c8f65ec463b77fd5f2ee8c64b55451da32f3",
     "releaseTag": "v0.1.0",
     "sourceCommit": "898061f019ddca8599debd7b15a204040bd6b349",

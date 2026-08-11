@@ -87,7 +87,7 @@ def _synthetic_manifest() -> dict[str, Any]:
         "corpusProvenanceSha256": RESET2_CORPUS_PROVENANCE_SHA256,
         "seeds": {"armOrderSeed": 11, "bootstrapSeed": 13, "judgeSamplingSeed": 17},
         "runtime": {
-            "codexVersion": "0.146.0",
+            "codexVersion": "0.147.0",
             "codexBinarySha256": digest,
             "model": "gpt-5.6-luna",
             "reasoningEffort": "high",
@@ -153,7 +153,7 @@ def _synthetic_run(manifest: dict[str, Any]) -> dict[str, Any]:
             "taskManifestSha256": digest,
             "codexBinarySha256": manifest["runtime"]["codexBinarySha256"],
         },
-        "codexVersion": "0.146.0",
+        "codexVersion": "0.147.0",
         "model": "gpt-5.6-luna",
         "reasoningEffort": "high",
         "serviceTier": "priority",

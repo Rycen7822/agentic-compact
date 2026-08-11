@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 2,
+  "codexVersion": "codex-cli 0.147.0",
+  "sourceTag": "rust-v0.147.0",
+  "sourceCommit": "be6e8eac029b183056b7e4402879f15d2c85f61b",
+  "platform": "Linux x86_64 (WSL2)",
+  "platformFamily": "unix",
+  "platformOs": "linux",
+  "wrapperPath": "@openai/codex@0.147.0/bin/codex.js",
+  "wrapperSha256": "134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477",
+  "nativeBinaryPath": "@openai/codex@0.147.0-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex",
+  "nativeBinarySha256": "cb0a15567e9a60a5820d54b0f6ae86d504dc3805c1eab21a47f70e3eb7b73a40",
+  "userAgent": "agentic_compact/0.147.0 (Ubuntu 24.4.0; x86_64) WindowsTerminal (agentic_compact; 0.1.0)",
+  "experimentalApi": false,
+  "generatedSchemaFileCount": 285,
+  "generatedSchemaBundleSha256": "0d2ddf85138073d0ea0a6828804349b65f18bf88f8b2ff7aef62c9262b39390f",
+  "generatedSchemaHashAlgorithm": "sha256(sorted(relative-path NUL file-sha256 LF))",
+  "schemaCommand": "codex app-server generate-json-schema --out target/codex-schema"
+}

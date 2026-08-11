@@ -1,22 +1,13 @@
 use serde_json::Value;
 
 const TARGET_SCHEMA: &str =
-    include_str!("fixtures/app-server/codex-cli-0.146.0/codex_app_server_protocol.v2.schemas.json");
+    include_str!("fixtures/app-server/codex-cli-0.147.0/codex_app_server_protocol.v2.schemas.json");
 
-const CONTRACTS: [(&str, &str, &str); 2] = [
-    (
-        TARGET_SCHEMA,
-        include_str!("fixtures/app-server/codex-cli-0.146.0/baseline.json"),
-        include_str!("fixtures/codex-cli/codex-cli-0.146.0/plugin-cli.json"),
-    ),
-    (
-        include_str!(
-            "fixtures/app-server/codex-cli-0.145.0/codex_app_server_protocol.v2.schemas.json"
-        ),
-        include_str!("fixtures/app-server/codex-cli-0.145.0/baseline.json"),
-        include_str!("fixtures/codex-cli/codex-cli-0.145.0/plugin-cli.json"),
-    ),
-];
+const CONTRACTS: [(&str, &str, &str); 1] = [(
+    TARGET_SCHEMA,
+    include_str!("fixtures/app-server/codex-cli-0.147.0/baseline.json"),
+    include_str!("fixtures/codex-cli/codex-cli-0.147.0/plugin-cli.json"),
+)];
 
 fn contains_string(value: &Value, expected: &str) -> bool {
     match value {
@@ -189,24 +180,14 @@ fn assert_request_and_projection_shapes(schema: &str) {
 
 #[test]
 fn baselines_are_stable_only_and_bound_to_supported_codex_versions() {
-    let expected = [
-        (
-            "codex-cli 0.146.0",
-            "rust-v0.146.0",
-            "e363b08c9175ac1cbe5893615dd2cb9ddf95043b",
-            275,
-            "2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
-            "2a56e22ada954380862fe419c39825d45db2d2e7f7f096dd882fa6cc4600cc19",
-        ),
-        (
-            "codex-cli 0.145.0",
-            "rust-v0.145.0",
-            "25af12f7e61572b0bc18ddb1008be543b91519b0",
-            273,
-            "a2a05dafaa1acb002a45eaec0a462de5b13694fcfcd7bc43305f14781ce7be14",
-            "72a461ea8036d16eb8403ceddfdc7e53905980e2873611e5ab0d6ec13a98e904",
-        ),
-    ];
+    let expected = [(
+        "codex-cli 0.147.0",
+        "rust-v0.147.0",
+        "be6e8eac029b183056b7e4402879f15d2c85f61b",
+        285,
+        "cb0a15567e9a60a5820d54b0f6ae86d504dc3805c1eab21a47f70e3eb7b73a40",
+        "0d2ddf85138073d0ea0a6828804349b65f18bf88f8b2ff7aef62c9262b39390f",
+    )];
     for ((_, baseline, _), (version, tag, commit, count, binary_hash, schema_hash)) in
         CONTRACTS.into_iter().zip(expected)
     {
@@ -226,11 +207,8 @@ fn baselines_are_stable_only_and_bound_to_supported_codex_versions() {
 }
 
 #[test]
-fn plugin_cli_uses_verified_commands_for_both_supported_versions() {
-    for ((_, _, fixture), version) in CONTRACTS
-        .into_iter()
-        .zip(["codex-cli 0.146.0", "codex-cli 0.145.0"])
-    {
+fn plugin_cli_uses_verified_commands_for_the_supported_version() {
+    for ((_, _, fixture), version) in CONTRACTS.into_iter().zip(["codex-cli 0.147.0"]) {
         let fixture: Value = serde_json::from_str(fixture).unwrap();
         assert_eq!(fixture["schemaVersion"], 2);
         assert_eq!(fixture["codexVersion"], version);

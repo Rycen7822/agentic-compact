@@ -300,7 +300,7 @@ async fn start_app_server(receipt: &str) -> (RealServer, PathBuf, PathBuf) {
     assert!(version.status.success());
     assert_eq!(
         String::from_utf8(version.stdout).unwrap().trim(),
-        "codex-cli 0.146.0"
+        "codex-cli 0.147.0"
     );
     let mut child = Command::new(codex)
         .args([

@@ -11,11 +11,8 @@ use tokio::process::{Child, Command};
 use tokio::time::sleep;
 
 const CURRENT_POLICY: &str =
-    include_str!("../tests/fixtures/launcher/codex-cli-0.146.0/launcher-args-v1.json");
-const PREVIOUS_POLICY: &str =
-    include_str!("../tests/fixtures/launcher/codex-cli-0.145.0/launcher-args-v1.json");
-const CURRENT_CODEX_VERSION: &str = "codex-cli 0.146.0";
-const PREVIOUS_CODEX_VERSION: &str = "codex-cli 0.145.0";
+    include_str!("../tests/fixtures/launcher/codex-cli-0.147.0/launcher-args-v1.json");
+const CURRENT_CODEX_VERSION: &str = "codex-cli 0.147.0";
 const SOCKET_WAIT_ATTEMPTS: usize = 100;
 
 #[derive(Debug, Deserialize)]
@@ -116,7 +113,6 @@ fn launcher_policy_for_version(version: &str) -> Result<LauncherPolicy> {
 fn policy_source(version: &str) -> Option<&'static str> {
     match version {
         CURRENT_CODEX_VERSION => Some(CURRENT_POLICY),
-        PREVIOUS_CODEX_VERSION => Some(PREVIOUS_POLICY),
         _ => None,
     }
 }
@@ -377,7 +373,7 @@ pub(crate) async fn resolve_supported_codex_binary() -> Result<PathBuf> {
         return Err(Error::new(
             ErrorCode::UnsupportedCodex,
             format!(
-                "plugin CLI contract supports {CURRENT_CODEX_VERSION} and {PREVIOUS_CODEX_VERSION}, but the resolved binary reports {version}"
+                "plugin CLI contract supports {CURRENT_CODEX_VERSION}, but the resolved binary reports {version}"
             ),
         )
         .component("install"));
@@ -430,11 +426,9 @@ mod tests {
     }
 
     #[test]
-    fn supports_current_and_previous_stable_contracts() {
-        for version in [CURRENT_CODEX_VERSION, PREVIOUS_CODEX_VERSION] {
-            let policy = launcher_policy_for_version(version).unwrap();
-            assert_eq!(policy.codex_version, version);
-        }
-        assert!(launcher_policy_for_version("codex-cli 0.144.0").is_err());
+    fn supports_only_the_frozen_stable_contract() {
+        let policy = launcher_policy_for_version(CURRENT_CODEX_VERSION).unwrap();
+        assert_eq!(policy.codex_version, CURRENT_CODEX_VERSION);
+        assert!(launcher_policy_for_version("codex-cli 0.146.0").is_err());
     }
 }

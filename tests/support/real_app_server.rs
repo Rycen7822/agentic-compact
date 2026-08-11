@@ -33,7 +33,7 @@ pub(crate) async fn start_frozen_codex(
         copy_auth(home.path());
     }
     let config = format!(
-        "model = \"gpt-5.6-luna\"\nmodel_reasoning_effort = \"high\"\n\n[features]\ncode_mode = false\ncode_mode_only = false\n{}",
+        "model = \"gpt-5.6-luna\"\nmodel_reasoning_effort = \"high\"\nservice_tier = \"priority\"\n\n[features]\ncode_mode = false\ncode_mode_only = false\n{}",
         configure(home.path())
     );
     std::fs::write(home.path().join("config.toml"), config).unwrap();
@@ -51,7 +51,7 @@ pub(crate) async fn start_frozen_codex(
     assert!(version.status.success());
     assert_eq!(
         String::from_utf8(version.stdout).unwrap().trim(),
-        "codex-cli 0.146.0"
+        "codex-cli 0.147.0"
     );
     let mut child = Command::new(codex)
         .args([

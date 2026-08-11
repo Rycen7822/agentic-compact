@@ -235,7 +235,7 @@
       ],
       "properties": {
         "codexVersion": {
-          "const": "0.146.0"
+          "const": "0.147.0"
         },
         "model": {
           "const": "gpt-5.6-luna"

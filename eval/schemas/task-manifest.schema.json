@@ -89,7 +89,7 @@
       ],
       "properties": {
         "codexVersion": {
-          "const": "0.146.0"
+          "const": "0.147.0"
         },
         "codexBinarySha256": {
           "$ref": "#/$defs/sha256"

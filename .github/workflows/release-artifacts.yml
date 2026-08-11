@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        codex_version: ["0.146.0", "0.145.0"]
+        codex_version: ["0.147.0"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -35,10 +35,8 @@ jobs:
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo test --all-targets --all-features
       - run: cargo test --test real_codex killed_real_app_server_fails_closed_without_a_retry -- --ignored
-      - if: matrix.codex_version == '0.146.0'
-        run: cargo test --test phase6_soak -- --ignored
-      - if: matrix.codex_version == '0.146.0'
-        run: cargo test --test phase6_resources -- --ignored
+      - run: cargo test --test phase6_soak -- --ignored
+      - run: cargo test --test phase6_resources -- --ignored
 
   build:
     needs: quality

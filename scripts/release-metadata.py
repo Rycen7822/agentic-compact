@@ -11,7 +11,7 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SUPPORTED_VERSIONS = ("0.146.0", "0.145.0")
+SUPPORTED_VERSIONS = ("0.147.0",)
 DEFAULT_BASELINES = [
     ROOT / f"tests/fixtures/app-server/codex-cli-{version}/baseline.json"
     for version in SUPPORTED_VERSIONS
